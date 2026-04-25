@@ -1,23 +1,18 @@
+import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
-import {
-  addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
-  type Connection,
-  type Edge,
-  type EdgeChange,
-  type Node,
-  type NodeChange,
-  type XYPosition,
-} from '@xyflow/react';
+import { collectNodeInputData, getIncomingEdges, topologicalSort } from '../lib/workflow-execution';
 
 export type WorkflowNodeType = 'textNode' | 'imageNode' | 'llmNode';
+export type WorkflowNodeExecutionStatus = 'idle' | 'running' | 'success' | 'error';
 
 export interface WorkflowNodeBaseData extends Record<string, unknown> {
   title: string;
   description: string;
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown>;
+  status: WorkflowNodeExecutionStatus;
+  error: string | null;
+  runId: string | null;
 }
 
 export interface TextNodeData extends WorkflowNodeBaseData {
@@ -39,6 +34,11 @@ export type WorkflowNodeData = TextNodeData | ImageNodeData | LLMNodeData;
 export type WorkflowNodeDataPatch = Partial<{
   title: string;
   description: string;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  status: WorkflowNodeExecutionStatus;
+  error: string | null;
+  runId: string | null;
   text: string;
   imageUrl: string;
   altText: string;
@@ -46,18 +46,27 @@ export type WorkflowNodeDataPatch = Partial<{
   model: string;
 }>;
 
+type WorkflowRunResponse = {
+  runId: string;
+  response: string;
+};
+
 interface WorkflowStore {
   nodes: Node<WorkflowNodeData>[];
   edges: Edge[];
+  isRunning: boolean;
+  runError: string | null;
   addNode: (type: WorkflowNodeType, position: XYPosition) => void;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
   updateNodeData: (nodeId: string, data: WorkflowNodeDataPatch) => void;
+  updateNodeInputs: (nodeId: string, inputs: Record<string, unknown>) => void;
   getIncomingEdges: (nodeId: string) => Edge[];
   getNodeInputData: (nodeId: string) => Record<string, unknown>;
   updateNodeOutputs: (nodeId: string, outputs: Record<string, unknown>) => void;
-  runWorkflow: () => void;
+  setWorkflowRunState: (state: { isRunning: boolean; runError?: string | null }) => void;
+  runWorkflow: () => Promise<void>;
 }
 
 const createNodeId = (type: WorkflowNodeType) =>
@@ -72,6 +81,9 @@ const createNodeData = (type: WorkflowNodeType): WorkflowNodeData => {
         text: 'Start writing here.',
         inputs: {},
         outputs: {},
+        status: 'idle',
+        error: null,
+        runId: null,
       };
     case 'imageNode':
       return {
@@ -81,52 +93,27 @@ const createNodeData = (type: WorkflowNodeType): WorkflowNodeData => {
         altText: 'Preview placeholder',
         inputs: {},
         outputs: {},
+        status: 'idle',
+        error: null,
+        runId: null,
       };
     case 'llmNode':
       return {
         title: 'LLM Node',
         description: 'Send a prompt to a language model and shape the output.',
         prompt: 'Summarize the workflow in one paragraph.',
-        model: 'gpt-5',
+        model: 'Model: gemini-1.5-flash',
         inputs: {},
         outputs: {},
+        status: 'idle',
+        error: null,
+        runId: null,
       };
     default: {
       const exhaustiveCheck: never = type;
       return exhaustiveCheck;
     }
   }
-};
-
-const topologicalSort = (
-  nodes: Node<WorkflowNodeData>[],
-  edges: Edge[],
-): string[] => {
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  const result: string[] = [];
-
-  const visit = (nodeId: string) => {
-    if (visited.has(nodeId)) return;
-    if (visiting.has(nodeId)) return;
-
-    visiting.add(nodeId);
-
-    const incomingEdges = edges.filter((e) => e.target === nodeId);
-    for (const edge of incomingEdges) {
-      visit(edge.source);
-    }
-
-    visiting.delete(nodeId);
-    visited.add(nodeId);
-    result.push(nodeId);
-  };
-
-  for (const node of nodes) {
-    visit(node.id);
-  }
-
-  return result;
 };
 
 const executeNode = (
@@ -149,11 +136,7 @@ const executeNode = (
       };
     }
     case 'llmNode': {
-      const data = nodeData as LLMNodeData;
-      const inputText = (inputs.text as string) || data.prompt;
-      return {
-        response: `Processed: ${inputText}`,
-      };
+      throw new Error('LLM nodes are executed through Trigger.dev.');
     }
     default: {
       const exhaustiveCheck: never = type;
@@ -165,6 +148,8 @@ const executeNode = (
 export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   nodes: [],
   edges: [],
+  isRunning: false,
+  runError: null,
   addNode: (type, position) => {
     const nodeId = createNodeId(type);
 
@@ -210,30 +195,27 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       ),
     }));
   },
+  updateNodeInputs: (nodeId, inputs) => {
+    set((state) => ({
+      nodes: state.nodes.map((node) =>
+        node.id === nodeId
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                inputs,
+              },
+            }
+          : node,
+      ),
+    }));
+  },
   getIncomingEdges: (nodeId) => {
-    return get().edges.filter((edge) => edge.target === nodeId);
+    return getIncomingEdges(get().edges, nodeId);
   },
   getNodeInputData: (nodeId) => {
     const state = get();
-    const incomingEdges = state.edges.filter((edge) => edge.target === nodeId);
-    const inputData: Record<string, unknown> = {};
-
-    for (const edge of incomingEdges) {
-      const sourceNode = state.nodes.find((n) => n.id === edge.source);
-      if (sourceNode && sourceNode.data.outputs) {
-        const outputs = sourceNode.data.outputs;
-        const sourceHandle = edge.sourceHandle || 'default';
-        const targetHandle = edge.targetHandle || 'default';
-
-        if (targetHandle === 'default') {
-          Object.assign(inputData, outputs);
-        } else {
-          inputData[targetHandle] = outputs[sourceHandle] || outputs;
-        }
-      }
-    }
-
-    return inputData;
+    return collectNodeInputData(state.nodes, state.edges, nodeId);
   },
   updateNodeOutputs: (nodeId, outputs) => {
     set((state) => ({
@@ -250,55 +232,116 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       ),
     }));
   },
-  runWorkflow: () => {
-    set((state) => {
-      let updatedNodes = [...state.nodes];
-      const executionOrder = topologicalSort(updatedNodes, state.edges);
+  setWorkflowRunState: ({ isRunning, runError }) => {
+    set({ isRunning, runError: runError ?? null });
+  },
+  runWorkflow: async () => {
+    if (get().isRunning) {
+      return;
+    }
+
+    set({ isRunning: true, runError: null });
+
+    try {
+      const state = get();
+      const executionOrder = topologicalSort(state.nodes, state.edges);
+      let workingNodes = [...state.nodes];
 
       for (const nodeId of executionOrder) {
-        const nodeIndex = updatedNodes.findIndex((n) => n.id === nodeId);
-        if (nodeIndex === -1) continue;
+        const nodeIndex = workingNodes.findIndex((node) => node.id === nodeId);
 
-        const node = updatedNodes[nodeIndex];
-
-        const incomingEdges = state.edges.filter((e) => e.target === nodeId);
-        const inputs: Record<string, unknown> = {};
-
-        for (const edge of incomingEdges) {
-          const sourceNode = updatedNodes.find((n) => n.id === edge.source);
-          if (sourceNode && sourceNode.data.outputs) {
-            const outputs = sourceNode.data.outputs;
-            const sourceHandle = edge.sourceHandle || 'default';
-            const targetHandle = edge.targetHandle || 'default';
-
-            if (targetHandle === 'default') {
-              Object.assign(inputs, outputs);
-            } else {
-              inputs[targetHandle] = outputs[sourceHandle] || outputs;
-            }
-          }
+        if (nodeIndex === -1) {
+          continue;
         }
 
-        updatedNodes[nodeIndex] = {
+        const node = workingNodes[nodeIndex];
+        const inputs = collectNodeInputData(workingNodes, state.edges, nodeId);
+
+        workingNodes[nodeIndex] = {
           ...node,
           data: {
             ...node.data,
             inputs,
+            error: null,
+            runId: null,
+            status: node.type === 'llmNode' ? 'running' : 'success',
           },
         };
 
-        const outputs = executeNode(node.type as WorkflowNodeType, node.data, inputs);
+        if (node.type !== 'llmNode') {
+          const outputs = executeNode(node.type as WorkflowNodeType, node.data, inputs);
 
-        updatedNodes[nodeIndex] = {
-          ...updatedNodes[nodeIndex],
+          workingNodes[nodeIndex] = {
+            ...workingNodes[nodeIndex],
+            data: {
+              ...workingNodes[nodeIndex].data,
+              outputs,
+              status: 'success',
+            },
+          };
+
+          set({ nodes: workingNodes });
+          continue;
+        }
+
+        set({ nodes: workingNodes });
+
+        const response = await fetch('/api/run-workflow', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            nodeId,
+            workflow: {
+              nodes: workingNodes,
+              edges: state.edges,
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+          throw new Error(payload?.message || 'Failed to run workflow.');
+        }
+
+        const result = (await response.json()) as WorkflowRunResponse;
+
+        workingNodes[nodeIndex] = {
+          ...workingNodes[nodeIndex],
           data: {
-            ...updatedNodes[nodeIndex].data,
-            outputs,
+            ...workingNodes[nodeIndex].data,
+            outputs: {
+              response: result.response,
+            },
+            status: 'success',
+            error: null,
+            runId: result.runId,
           },
         };
-      }
 
-      return { nodes: updatedNodes };
-    });
+        set({ nodes: workingNodes });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Workflow execution failed.';
+
+      set((currentState) => ({
+        nodes: currentState.nodes.map((node) =>
+          node.type === 'llmNode'
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  status: 'error',
+                  error: message,
+                },
+              }
+            : node,
+        ),
+        runError: message,
+      }));
+    } finally {
+      set({ isRunning: false });
+    }
   },
 }));
