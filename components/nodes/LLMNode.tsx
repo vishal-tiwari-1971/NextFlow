@@ -9,9 +9,16 @@ type LLMNodeShape = Node<LLMNodeData, 'llmNode'>;
 export default function LLMNode({ data, id }: NodeProps<LLMNodeShape>) {
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
 
-  const handlePromptChange = useCallback(
+  const handleSystemPromptChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
-      updateNodeData(id, { prompt: e.target.value });
+      updateNodeData(id, { systemPrompt: e.target.value });
+    },
+    [id, updateNodeData],
+  );
+
+  const handleUserPromptChange = useCallback(
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
+      updateNodeData(id, { userPrompt: e.target.value, prompt: e.target.value });
     },
     [id, updateNodeData],
   );
@@ -43,7 +50,7 @@ export default function LLMNode({ data, id }: NodeProps<LLMNodeShape>) {
           </div>
           <div>
             <span className="block text-[10px] uppercase tracking-[0.24em] text-slate-500">
-              Prompt
+              System Prompt
             </span>
             {data.status === 'running' ? (
               <div className="mt-1 rounded border border-emerald-400/30 bg-emerald-400/10 px-2 py-2 text-emerald-200">
@@ -51,10 +58,23 @@ export default function LLMNode({ data, id }: NodeProps<LLMNodeShape>) {
               </div>
             ) : (
               <textarea
-                value={data.prompt}
-                onChange={handlePromptChange}
+                value={data.systemPrompt}
+                onChange={handleSystemPromptChange}
                 className="mt-1 w-full rounded border border-slate-600 bg-slate-950 p-2 text-xs text-slate-200 focus:border-emerald-400 focus:outline-none"
                 rows={2}
+              />
+            )}
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.24em] text-slate-500">
+              User Prompt
+            </span>
+            {data.status === 'running' ? null : (
+              <textarea
+                value={data.userPrompt || data.prompt}
+                onChange={handleUserPromptChange}
+                className="mt-1 w-full rounded border border-slate-600 bg-slate-950 p-2 text-xs text-slate-200 focus:border-emerald-400 focus:outline-none"
+                rows={3}
               />
             )}
           </div>
@@ -75,7 +95,7 @@ export default function LLMNode({ data, id }: NodeProps<LLMNodeShape>) {
 
         <div className="text-[11px] text-slate-400">
           <span className="font-semibold text-slate-300">Outputs:</span>
-          <pre className="bg-black text-green-400 p-3 rounded text-sm whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+          <pre className="mt-1 max-h-56 overflow-y-auto rounded bg-black p-3 text-sm whitespace-pre-wrap break-words text-green-400">
             {JSON.stringify(data.outputs ?? {}, null, 2)}
           </pre>
         </div>
