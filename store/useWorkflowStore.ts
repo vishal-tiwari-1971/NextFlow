@@ -2,7 +2,13 @@ import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Edge
 import { create } from 'zustand';
 import { collectNodeInputData, getIncomingEdges, topologicalSort } from '../lib/workflow-execution';
 
-export type WorkflowNodeType = 'textNode' | 'imageNode' | 'llmNode';
+export type WorkflowNodeType =
+  | 'textNode'
+  | 'imageNode'
+  | 'llmNode'
+  | 'uploadVideoNode'
+  | 'cropImageNode'
+  | 'extractFrameNode';
 export type WorkflowNodeExecutionStatus = 'idle' | 'running' | 'success' | 'error';
 
 export interface WorkflowNodeBaseData extends Record<string, unknown> {
@@ -29,7 +35,28 @@ export interface LLMNodeData extends WorkflowNodeBaseData {
   model: string;
 }
 
-export type WorkflowNodeData = TextNodeData | ImageNodeData | LLMNodeData;
+export interface UploadVideoNodeData extends WorkflowNodeBaseData {
+  videoUrl: string;
+}
+
+export interface CropImageNodeData extends WorkflowNodeBaseData {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ExtractFrameNodeData extends WorkflowNodeBaseData {
+  timestamp: number;
+}
+
+export type WorkflowNodeData =
+  | TextNodeData
+  | ImageNodeData
+  | LLMNodeData
+  | UploadVideoNodeData
+  | CropImageNodeData
+  | ExtractFrameNodeData;
 
 export type WorkflowNodeDataPatch = Partial<{
   title: string;
@@ -44,6 +71,12 @@ export type WorkflowNodeDataPatch = Partial<{
   altText: string;
   prompt: string;
   model: string;
+  videoUrl: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  timestamp: number;
 }>;
 
 type WorkflowRunResponse = {
@@ -57,6 +90,7 @@ interface WorkflowStore {
   isRunning: boolean;
   runError: string | null;
   addNode: (type: WorkflowNodeType, position: XYPosition) => void;
+  deleteNode: (nodeId: string) => void;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
@@ -102,7 +136,43 @@ const createNodeData = (type: WorkflowNodeType): WorkflowNodeData => {
         title: 'LLM Node',
         description: 'Send a prompt to a language model and shape the output.',
         prompt: 'Summarize the workflow in one paragraph.',
-        model: 'Model: gemini-1.5-flash',
+        model: 'Model: gemini-2.0-flash',
+        inputs: {},
+        outputs: {},
+        status: 'idle',
+        error: null,
+        runId: null,
+      };
+    case 'uploadVideoNode':
+      return {
+        title: 'Upload Video Node',
+        description: 'Upload or reference a video source for downstream nodes.',
+        videoUrl: 'https://example.com/video.mp4',
+        inputs: {},
+        outputs: {},
+        status: 'idle',
+        error: null,
+        runId: null,
+      };
+    case 'cropImageNode':
+      return {
+        title: 'Crop Image Node',
+        description: 'Mock crop operation for an input image URL.',
+        x: 0,
+        y: 0,
+        width: 256,
+        height: 256,
+        inputs: {},
+        outputs: {},
+        status: 'idle',
+        error: null,
+        runId: null,
+      };
+    case 'extractFrameNode':
+      return {
+        title: 'Extract Frame Node',
+        description: 'Mock frame extraction from a video URL and timestamp.',
+        timestamp: 1,
         inputs: {},
         outputs: {},
         status: 'idle',
@@ -135,6 +205,27 @@ const executeNode = (
         alt_text: data.altText,
       };
     }
+    case 'uploadVideoNode': {
+      const data = nodeData as UploadVideoNodeData;
+      return {
+        video_url: data.videoUrl,
+      };
+    }
+    case 'cropImageNode': {
+      const sourceImage =
+        typeof inputs.image_url === 'string' && inputs.image_url.trim().length > 0
+          ? inputs.image_url
+          : 'https://placehold.co/600x400/1e293b/94a3b8?text=Cropped+Image';
+
+      return {
+        cropped_image_url: sourceImage,
+      };
+    }
+    case 'extractFrameNode': {
+      return {
+        frame_image_url: 'https://via.placeholder.com/300',
+      };
+    }
     case 'llmNode': {
       throw new Error('LLM nodes are executed through Trigger.dev.');
     }
@@ -163,6 +254,12 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
           data: createNodeData(type),
         },
       ],
+    }));
+  },
+  deleteNode: (nodeId) => {
+    set((state) => ({
+      nodes: state.nodes.filter((node) => node.id !== nodeId),
+      edges: state.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
     }));
   },
   onNodesChange: (changes) => {
@@ -264,12 +361,16 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
             inputs,
             error: null,
             runId: null,
-            status: node.type === 'llmNode' ? 'running' : 'success',
+            status: 'running',
           },
         };
 
         if (node.type !== 'llmNode') {
-          const outputs = executeNode(node.type as WorkflowNodeType, node.data, inputs);
+          const outputs = executeNode(
+            node.type as WorkflowNodeType,
+            workingNodes[nodeIndex].data,
+            inputs,
+          );
 
           workingNodes[nodeIndex] = {
             ...workingNodes[nodeIndex],
@@ -327,7 +428,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
       set((currentState) => ({
         nodes: currentState.nodes.map((node) =>
-          node.type === 'llmNode'
+          node.data.status === 'running'
             ? {
                 ...node,
                 data: {

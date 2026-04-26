@@ -20,14 +20,22 @@ type WorkflowExecutionResponse = {
 };
 
 
-const getNodeInputText = (inputs: Record<string, unknown>, prompt: string) => {
-  const candidate = inputs.response ?? inputs.text ?? inputs.prompt;
+const buildFinalPrompt = (inputs: Record<string, unknown>, prompt: string) => {
+  const inputTextValue = inputs.response ?? inputs.text ?? inputs.image_url ?? '';
+  const inputText = typeof inputTextValue === 'string' ? inputTextValue : '';
+  const nodePrompt = prompt || '';
 
-  if (typeof candidate === 'string' && candidate.trim().length > 0) {
-    return candidate;
-  }
+  return `
+You are an AI assistant.
 
-  return prompt;
+Task:
+${inputText}
+
+Requirements:
+${nodePrompt}
+
+Follow the requirements strictly.
+`.trim();
 };
 
 export async function POST(request: Request) {
@@ -63,8 +71,11 @@ export async function POST(request: Request) {
       type: 'llmNode';
     };
 
-    const prompt = getNodeInputText(llmNode.data.inputs, String(llmNode.data.prompt || ''));
-    const responseText = await generateGeminiText({ apiKey, prompt });
+    const finalPrompt = buildFinalPrompt(
+      llmNode.data.inputs,
+      String(llmNode.data.prompt || ''),
+    );
+    const responseText = await generateGeminiText({ apiKey, prompt: finalPrompt });
 
     const response: WorkflowExecutionResponse = {
       runId: 'local-' + Date.now(),

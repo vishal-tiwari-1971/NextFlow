@@ -12,13 +12,19 @@ import {
 } from '@xyflow/react';
 import ImageNode from '../../components/nodes/ImageNode';
 import LLMNode from '../../components/nodes/LLMNode';
+import CropImageNode from '../../components/nodes/CropImageNode';
+import ExtractFrameNode from '../../components/nodes/ExtractFrameNode';
 import TextNode from '../../components/nodes/TextNode';
+import UploadVideoNode from '../../components/nodes/UploadVideoNode';
 import { type WorkflowNodeType, useWorkflowStore } from '../../store/useWorkflowStore';
 
 const nodeTypes: NodeTypes = {
   textNode: TextNode,
   imageNode: ImageNode,
   llmNode: LLMNode,
+  uploadVideoNode: UploadVideoNode,
+  cropImageNode: CropImageNode,
+  extractFrameNode: ExtractFrameNode,
 };
 
 const nodeButtons: Array<{
@@ -41,6 +47,21 @@ const nodeButtons: Array<{
     type: 'llmNode',
     accent: 'from-emerald-400/90 to-lime-300/90',
   },
+  {
+    label: 'Add Video Node',
+    type: 'uploadVideoNode',
+    accent: 'from-amber-400/90 to-yellow-300/90',
+  },
+  {
+    label: 'Add Crop Node',
+    type: 'cropImageNode',
+    accent: 'from-orange-400/90 to-amber-300/90',
+  },
+  {
+    label: 'Add Extract Frame Node',
+    type: 'extractFrameNode',
+    accent: 'from-violet-400/90 to-indigo-300/90',
+  },
 ];
 
 const randomPosition = (): XYPosition => {
@@ -59,6 +80,7 @@ function WorkflowCanvas() {
   const nodes = useWorkflowStore((state) => state.nodes);
   const edges = useWorkflowStore((state) => state.edges);
   const addNode = useWorkflowStore((state) => state.addNode);
+  const deleteNode = useWorkflowStore((state) => state.deleteNode);
   const onConnect = useWorkflowStore((state) => state.onConnect);
   const onNodesChange = useWorkflowStore((state) => state.onNodesChange);
   const onEdgesChange = useWorkflowStore((state) => state.onEdgesChange);
@@ -132,6 +154,10 @@ function WorkflowCanvas() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeContextMenu={(event, node) => {
+            event.preventDefault();
+            deleteNode(node.id);
+          }}
           fitView
           snapToGrid
           snapGrid={[20, 20]}
@@ -157,6 +183,9 @@ function WorkflowCanvas() {
               if (node.type === 'textNode') return '#38bdf8';
               if (node.type === 'imageNode') return '#e879f9';
               if (node.type === 'llmNode') return '#34d399';
+              if (node.type === 'uploadVideoNode') return '#f59e0b';
+              if (node.type === 'cropImageNode') return '#fb923c';
+              if (node.type === 'extractFrameNode') return '#a78bfa';
               return '#64748b';
             }}
             maskColor="rgba(2, 6, 23, 0.55)"

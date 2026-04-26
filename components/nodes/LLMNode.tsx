@@ -66,25 +66,19 @@ export default function LLMNode({ data, id }: NodeProps<LLMNodeShape>) {
           </div>
         )}
 
-        {Object.keys(data.inputs || {}).length > 0 && (
-          <div className="text-[11px] text-slate-400">
-            <span className="font-semibold text-slate-300">Inputs:</span>
-            <pre className="mt-1 overflow-auto rounded bg-slate-950 p-2 text-[10px] text-slate-300">
-              {JSON.stringify(data.inputs, null, 2)}
-            </pre>
-          </div>
-        )}
+        <div className="text-[11px] text-slate-400">
+          <span className="font-semibold text-slate-300">Inputs:</span>
+          <pre className="mt-1 overflow-auto rounded bg-slate-950 p-2 text-[10px] text-slate-300">
+            {JSON.stringify(data.inputs ?? {}, null, 2)}
+          </pre>
+        </div>
 
-        {Object.keys(data.outputs || {}).length > 0 && (
-          <div className="text-[11px] text-slate-400">
-            <span className="font-semibold text-slate-300">Outputs:</span>
-            <pre className="bg-black text-green-400 p-3 rounded text-sm 
-                whitespace-pre-wrap break-words 
-                max-h-40 overflow-y-auto">
-              {JSON.stringify(data.outputs, null, 2)}
-            </pre>
-          </div>
-        )}
+        <div className="text-[11px] text-slate-400">
+          <span className="font-semibold text-slate-300">Outputs:</span>
+          <pre className="bg-black text-green-400 p-3 rounded text-sm whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+            {JSON.stringify(data.outputs ?? {}, null, 2)}
+          </pre>
+        </div>
       </div>
 
       <Handle
