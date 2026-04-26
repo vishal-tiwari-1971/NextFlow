@@ -32,6 +32,8 @@ export interface ImageNodeData extends WorkflowNodeBaseData {
 
 export interface LLMNodeData extends WorkflowNodeBaseData {
   prompt: string;
+  systemPrompt: string;
+  userPrompt: string;
   model: string;
 }
 
@@ -70,6 +72,8 @@ export type WorkflowNodeDataPatch = Partial<{
   imageUrl: string;
   altText: string;
   prompt: string;
+  systemPrompt: string;
+  userPrompt: string;
   model: string;
   videoUrl: string;
   x: number;
@@ -136,6 +140,8 @@ const createNodeData = (type: WorkflowNodeType): WorkflowNodeData => {
         title: 'LLM Node',
         description: 'Send a prompt to a language model and shape the output.',
         prompt: 'Summarize the workflow in one paragraph.',
+        systemPrompt: 'You are an AI assistant.',
+        userPrompt: 'Summarize the workflow in one paragraph.',
         model: 'Model: gemini-2.0-flash',
         inputs: {},
         outputs: {},
@@ -194,15 +200,30 @@ const executeNode = (
   switch (type) {
     case 'textNode': {
       const data = nodeData as TextNodeData;
+      const prevTexts: string[] = [];
+
+      if (Array.isArray(inputs.texts)) {
+        for (const value of inputs.texts) {
+          if (typeof value === 'string') {
+            prevTexts.push(value);
+          }
+        }
+      } else if (typeof inputs.text === 'string') {
+        prevTexts.push(inputs.text);
+      }
+
+      if (typeof data.text === 'string' && data.text.trim().length > 0) {
+        prevTexts.push(data.text);
+      }
+
       return {
-        text: data.text,
+        texts: prevTexts,
       };
     }
     case 'imageNode': {
       const data = nodeData as ImageNodeData;
       return {
         image_url: data.imageUrl,
-        alt_text: data.altText,
       };
     }
     case 'uploadVideoNode': {
@@ -212,22 +233,20 @@ const executeNode = (
       };
     }
     case 'cropImageNode': {
-      const sourceImage =
-        typeof inputs.image_url === 'string' && inputs.image_url.trim().length > 0
-          ? inputs.image_url
-          : 'https://placehold.co/600x400/1e293b/94a3b8?text=Cropped+Image';
+      const sourceImage = typeof inputs.image_url === 'string' ? inputs.image_url : '';
 
       return {
         cropped_image_url: sourceImage,
       };
     }
     case 'extractFrameNode': {
+      const sourceVideo = typeof inputs.video_url === 'string' ? inputs.video_url : '';
       return {
-        frame_image_url: 'https://via.placeholder.com/300',
+        frame_image_url: sourceVideo,
       };
     }
     case 'llmNode': {
-      throw new Error('LLM nodes are executed through Trigger.dev.');
+      throw new Error('LLM nodes are executed through the workflow route.');
     }
     default: {
       const exhaustiveCheck: never = type;
@@ -343,6 +362,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       const state = get();
       const executionOrder = topologicalSort(state.nodes, state.edges);
       let workingNodes = [...state.nodes];
+      const outputsByNodeId: Record<string, Record<string, unknown>> = {};
 
       for (const nodeId of executionOrder) {
         const nodeIndex = workingNodes.findIndex((node) => node.id === nodeId);
@@ -371,6 +391,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
             workingNodes[nodeIndex].data,
             inputs,
           );
+
+          outputsByNodeId[nodeId] = outputs;
 
           workingNodes[nodeIndex] = {
             ...workingNodes[nodeIndex],
@@ -407,14 +429,16 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
         }
 
         const result = (await response.json()) as WorkflowRunResponse;
+        const llmOutputs = {
+          response: result.response,
+        };
+        outputsByNodeId[nodeId] = llmOutputs;
 
         workingNodes[nodeIndex] = {
           ...workingNodes[nodeIndex],
           data: {
             ...workingNodes[nodeIndex].data,
-            outputs: {
-              response: result.response,
-            },
+            outputs: llmOutputs,
             status: 'success',
             error: null,
             runId: result.runId,

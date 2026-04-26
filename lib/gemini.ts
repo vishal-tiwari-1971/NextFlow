@@ -8,7 +8,19 @@ const MODELS_CACHE_TTL_MS = Number(process.env.GEMINI_MODELS_CACHE_TTL_MS || 10 
 type GeminiRequestOptions = {
   apiKey: string;
   prompt: string;
+  imageUrls?: string[];
 };
+
+type GeminiPart =
+  | {
+      text: string;
+    }
+  | {
+      inline_data: {
+        mime_type: string;
+        data: string;
+      };
+    };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -110,12 +122,61 @@ const extractGeminiText = (response: unknown): string => {
 const isRetryableStatus = (status: number) => status === 429 || status === 503;
 const isModelUnavailableStatus = (status: number) => status === 404;
 
-export const generateGeminiText = async ({ apiKey, prompt }: GeminiRequestOptions): Promise<string> => {
+const toBase64 = async (url: string): Promise<{ data: string; mimeType: string } | null> => {
+  try {
+    const imageResponse = await fetch(url, {
+      cache: 'no-store',
+    });
+
+    if (!imageResponse.ok) {
+      return null;
+    }
+
+    const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await imageResponse.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+
+    return {
+      data: base64,
+      mimeType,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const buildGeminiParts = async (prompt: string, imageUrls: string[] = []): Promise<GeminiPart[]> => {
+  if (imageUrls.length === 0) {
+    return [{ text: prompt }];
+  }
+
+  const parts: GeminiPart[] = [{ text: prompt }];
+
+  for (const imageUrl of imageUrls) {
+    const base64Payload = await toBase64(imageUrl);
+
+    if (!base64Payload) {
+      continue;
+    }
+
+    parts.push({
+      inline_data: {
+        mime_type: base64Payload.mimeType,
+        data: base64Payload.data,
+      },
+    });
+  }
+
+  return parts;
+};
+
+export const generateGeminiText = async ({ apiKey, prompt, imageUrls = [] }: GeminiRequestOptions): Promise<string> => {
   if (!prompt || prompt.trim().length === 0) {
     throw new Error('Prompt is empty.');
   }
 
   const models = await getModels(apiKey);
+  const parts = await buildGeminiParts(prompt, imageUrls);
 
   if (models.length === 0) {
     throw new Error('No Gemini models are available for generateContent.');
@@ -136,7 +197,7 @@ export const generateGeminiText = async ({ apiKey, prompt }: GeminiRequestOption
             contents: [
               {
                 role: 'user',
-                parts: [{ text: prompt }],
+                parts,
               },
             ],
             generationConfig: {

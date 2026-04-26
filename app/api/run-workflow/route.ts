@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { Node, Edge } from '@xyflow/react';
-import { collectNodeInputData } from '../../../lib/workflow-execution';
+import { collectNodeInputData, normalizeInputs } from '../../../lib/workflow-execution';
 import { generateGeminiText } from '../../../lib/gemini';
-import type { WorkflowNodeData, WorkflowNodeType } from '../../../store/useWorkflowStore';
+import type { LLMNodeData, WorkflowNodeData, WorkflowNodeType } from '../../../store/useWorkflowStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,21 +20,32 @@ type WorkflowExecutionResponse = {
 };
 
 
-const buildFinalPrompt = (inputs: Record<string, unknown>, prompt: string) => {
-  const inputTextValue = inputs.response ?? inputs.text ?? inputs.image_url ?? '';
-  const inputText = typeof inputTextValue === 'string' ? inputTextValue : '';
-  const nodePrompt = prompt || '';
+const buildFinalPrompt = (textList: string[], llmData: LLMNodeData) => {
+  const numberedInputs =
+    textList.length > 0
+      ? textList.map((text, index) => `Input ${index + 1}: ${text}`).join('\n')
+      : 'No text provided';
+  const systemPrompt = llmData.systemPrompt || 'You are an AI assistant.';
+  const userPrompt = llmData.userPrompt || llmData.prompt || '';
 
   return `
-You are an AI assistant.
+${systemPrompt}
 
-Task:
-${inputText}
+You are given multiple user queries:
 
-Requirements:
-${nodePrompt}
+${numberedInputs}
 
-Follow the requirements strictly.
+Instructions:
+- Answer each query separately
+- Number each answer clearly as 1., 2., 3., etc.
+- Do NOT ignore any query
+- Keep the answer for each input tied only to that input
+- Do not merge unrelated inputs into a single response
+
+Additional instruction:
+${userPrompt}
+
+If images are provided, use them only if relevant.
 `.trim();
 };
 
@@ -71,11 +82,20 @@ export async function POST(request: Request) {
       type: 'llmNode';
     };
 
-    const finalPrompt = buildFinalPrompt(
-      llmNode.data.inputs,
-      String(llmNode.data.prompt || ''),
-    );
-    const responseText = await generateGeminiText({ apiKey, prompt: finalPrompt });
+    const { texts, images, videos } = normalizeInputs(llmNode.data.inputs);
+    const textList = Array.isArray(texts) ? texts : [texts].filter(Boolean);
+    console.log('Normalized Inputs:', {
+      texts,
+      images,
+      videos,
+    });
+    console.log('Text Inputs:', textList);
+    const finalPrompt = buildFinalPrompt(textList, llmNode.data as LLMNodeData);
+    const responseText = await generateGeminiText({
+      apiKey,
+      prompt: finalPrompt,
+      imageUrls: images,
+    });
 
     const response: WorkflowExecutionResponse = {
       runId: 'local-' + Date.now(),
