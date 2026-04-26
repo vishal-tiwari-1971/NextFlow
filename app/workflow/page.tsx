@@ -63,6 +63,8 @@ function WorkflowCanvas() {
   const onNodesChange = useWorkflowStore((state) => state.onNodesChange);
   const onEdgesChange = useWorkflowStore((state) => state.onEdgesChange);
   const runWorkflow = useWorkflowStore((state) => state.runWorkflow);
+  const isRunning = useWorkflowStore((state) => state.isRunning);
+  const runError = useWorkflowStore((state) => state.runError);
 
   const handleAddNode = (type: WorkflowNodeType) => {
     addNode(type, randomPosition());
@@ -100,10 +102,17 @@ function WorkflowCanvas() {
         <button
           type="button"
           onClick={() => runWorkflow()}
-          className="flex w-full items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-200 transition hover:border-emerald-400/50 hover:bg-emerald-400/20"
+          disabled={isRunning}
+          className="flex w-full items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-200 transition hover:border-emerald-400/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-400"
         >
-          ▶ Run Workflow
+          {isRunning ? 'Running...' : '▶ Run Workflow'}
         </button>
+
+        {runError && (
+          <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs leading-5 text-rose-200">
+            {runError}
+          </p>
+        )}
 
         <div className="mt-auto rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-950 p-4 text-sm text-slate-300 shadow-[0_18px_60px_rgba(2,6,23,0.45)]">
           <p className="font-medium text-slate-100">Canvas controls</p>

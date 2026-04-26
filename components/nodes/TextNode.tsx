@@ -1,7 +1,7 @@
 'use client';
 
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
-import { useCallback } from 'react';
+import { useCallback, type ChangeEvent } from 'react';
 import { useWorkflowStore, type TextNodeData } from '../../store/useWorkflowStore';
 
 type TextNodeShape = Node<TextNodeData, 'textNode'>;
@@ -10,7 +10,7 @@ export default function TextNode({ data, id }: NodeProps<TextNodeShape>) {
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
 
   const handleTextChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
       updateNodeData(id, { text: e.target.value });
     },
     [id, updateNodeData],
