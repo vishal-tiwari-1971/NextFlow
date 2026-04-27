@@ -89,7 +89,7 @@ const normalizeLegacyRun = (legacy: LegacyRun): WorkflowRun | null => {
     return null;
   }
 
-  const nodes = ((legacy.result?.nodes ?? []) as Array<{
+  const nodes: WorkflowRunNode[] = ((legacy.result?.nodes ?? []) as Array<{
     id?: string;
     type?: string;
     data?: { inputs?: unknown; outputs?: unknown; status?: string };
