@@ -80,22 +80,39 @@ export const normalizeInputs = (inputs: Record<string, unknown>): NormalizedInpu
       return;
     }
 
+    const lowerKey = key.toLowerCase();
+
     if (typeof value === 'string') {
-      const lowerKey = key.toLowerCase();
-
-      if (lowerKey.includes('image')) {
-        images.push(value);
-        return;
-      }
-
+      // Check if key indicates this should be a video
       if (lowerKey.includes('video')) {
         videos.push(value);
         return;
       }
 
-      if (value.startsWith('http')) {
-        images.push(value);
+      // Check if this is an image or frame - but only if it looks like an image URL
+      if (lowerKey.includes('image') || lowerKey.includes('frame')) {
+        // Verify it's actually an image URL (has image extension or is from a CDN)
+        const hasImageExt = /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(value);
+        const isCdnUrl = value.includes('transloadit.net') || value.includes('cloudinary') || value.includes('imgix');
+        
+        if (hasImageExt || (value.startsWith('http') && isCdnUrl)) {
+          images.push(value);
+          return;
+        }
+        
+        // If key says 'image'/'frame' but URL doesn't look like an image, don't add it
+        // This prevents video URLs from being treated as images
         return;
+      }
+
+      // For other HTTP URLs, don't auto-classify as images
+      if (value.startsWith('http')) {
+        // Only treat as image if it has an image extension
+        const hasImageExt = /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(value);
+        if (hasImageExt) {
+          images.push(value);
+          return;
+        }
       }
 
       texts.push(value);

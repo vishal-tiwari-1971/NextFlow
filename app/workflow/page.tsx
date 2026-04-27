@@ -10,6 +10,10 @@ import {
   type NodeTypes,
   type XYPosition,
 } from '@xyflow/react';
+import { useState } from 'react';
+import HistoryPanel from '../../components/HistoryPanel';
+import LoadSampleWorkflowButton from '../../components/LoadSampleWorkflowButton';
+import NewWorkflowButton from '../../components/NewWorkflowButton';
 import ImageNode from '../../components/nodes/ImageNode';
 import LLMNode from '../../components/nodes/LLMNode';
 import CropImageNode from '../../components/nodes/CropImageNode';
@@ -87,6 +91,7 @@ function WorkflowCanvas() {
   const runWorkflow = useWorkflowStore((state) => state.runWorkflow);
   const isRunning = useWorkflowStore((state) => state.isRunning);
   const runError = useWorkflowStore((state) => state.runError);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const handleAddNode = (type: WorkflowNodeType) => {
     addNode(type, randomPosition());
@@ -94,54 +99,97 @@ function WorkflowCanvas() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-      <aside className="flex w-[320px] shrink-0 flex-col border-r border-white/10 bg-slate-950/95 px-5 py-6 shadow-[inset_-1px_0_0_rgba(255,255,255,0.03)] backdrop-blur-xl">
-        <div className="space-y-2 pb-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-500">
-            Nextflow
-          </p>
-          <h1 className="text-2xl font-semibold text-white">Workflow Builder</h1>
-          <p className="max-w-sm text-sm leading-6 text-slate-400">
-            Add nodes to the canvas and connect them to prototype flows quickly.
-          </p>
+      <aside
+        className={`flex shrink-0 flex-col border-r border-white/10 bg-slate-950/95 shadow-[inset_-1px_0_0_rgba(255,255,255,0.03)] backdrop-blur-xl transition-[width,padding] duration-300 ${
+          isSidebarCollapsed ? 'w-[84px] px-3 py-5' : 'w-[320px] px-5 py-6'
+        }`}
+      >
+        <div className={`pb-5 ${isSidebarCollapsed ? 'space-y-3' : 'space-y-2'}`}>
+          <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+            {!isSidebarCollapsed && (
+              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-500">Nextflow</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-white/20 hover:bg-white/10"
+              aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isSidebarCollapsed ? '>>' : '<<'}
+            </button>
+          </div>
+
+          {!isSidebarCollapsed && (
+            <>
+              <h1 className="text-2xl font-semibold text-white">Workflow Builder</h1>
+              <p className="max-w-sm text-sm leading-6 text-slate-400">
+                Add nodes to the canvas and connect them to prototype flows quickly.
+              </p>
+            </>
+          )}
         </div>
 
-        <div className="space-y-3">
+        <div className={isSidebarCollapsed ? 'space-y-2' : 'space-y-3'}>
           {nodeButtons.map((button) => (
             <button
               key={button.type}
               type="button"
               onClick={() => handleAddNode(button.type)}
-              className="group flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/10"
+              title={button.label}
+              className={`group flex w-full rounded-2xl border border-white/10 bg-white/5 text-sm font-medium text-slate-100 transition hover:border-white/20 hover:bg-white/10 ${
+                isSidebarCollapsed ? 'items-center justify-center px-0 py-3' : 'items-center justify-between px-4 py-3 text-left'
+              }`}
             >
-              <span>{button.label}</span>
-              <span
-                className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${button.accent} shadow-[0_0_24px_rgba(255,255,255,0.35)]`}
-              />
+              {isSidebarCollapsed ? (
+                <span
+                  className={`h-3 w-3 rounded-full bg-gradient-to-r ${button.accent} shadow-[0_0_24px_rgba(255,255,255,0.45)]`}
+                />
+              ) : (
+                <>
+                  <span>{button.label}</span>
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${button.accent} shadow-[0_0_24px_rgba(255,255,255,0.35)]`}
+                  />
+                </>
+              )}
             </button>
           ))}
         </div>
+
+        <LoadSampleWorkflowButton isCollapsed={isSidebarCollapsed} />
+        <NewWorkflowButton isCollapsed={isSidebarCollapsed} />
 
         <button
           type="button"
           onClick={() => runWorkflow()}
           disabled={isRunning}
-          className="flex w-full items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-200 transition hover:border-emerald-400/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-400"
+          title="Run Workflow"
+          className={`flex w-full items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 text-sm font-medium text-emerald-200 transition hover:border-emerald-400/50 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-400 ${
+            isSidebarCollapsed ? 'mt-3 px-0 py-3' : 'px-4 py-3'
+          }`}
         >
-          {isRunning ? 'Running...' : '▶ Run Workflow'}
+          {isSidebarCollapsed ? (isRunning ? '...' : '▶') : isRunning ? 'Running...' : '▶ Run Workflow'}
         </button>
 
-        {runError && (
-          <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs leading-5 text-rose-200">
-            {runError}
-          </p>
-        )}
+        {runError &&
+          (isSidebarCollapsed ? (
+            <div className="mt-3 flex justify-center">
+              <span className="h-2.5 w-2.5 rounded-full bg-rose-400" title={runError} />
+            </div>
+          ) : (
+            <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs leading-5 text-rose-200">
+              {runError}
+            </p>
+          ))}
 
-        <div className="mt-auto rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-950 p-4 text-sm text-slate-300 shadow-[0_18px_60px_rgba(2,6,23,0.45)]">
-          <p className="font-medium text-slate-100">Canvas controls</p>
-          <p className="mt-2 leading-6 text-slate-400">
-            Pan, zoom, and connect handles to create a visual workflow.
-          </p>
-        </div>
+        {!isSidebarCollapsed && (
+          <div className="mt-auto rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-950 p-4 text-sm text-slate-300 shadow-[0_18px_60px_rgba(2,6,23,0.45)]">
+            <p className="font-medium text-slate-100">Canvas controls</p>
+            <p className="mt-2 leading-6 text-slate-400">
+              Pan, zoom, and connect handles to create a visual workflow.
+            </p>
+          </div>
+        )}
       </aside>
 
       <main className="relative flex-1 overflow-hidden">
@@ -191,11 +239,13 @@ function WorkflowCanvas() {
             maskColor="rgba(2, 6, 23, 0.55)"
           />
           <Controls
-            className="!bottom-4 !left-4 !rounded-2xl !border !border-white/10 !bg-slate-900/95 !text-slate-100 !shadow-2xl"
+            className="workflow-controls !bottom-4 !left-4 !rounded-2xl !border !border-white/10 !bg-slate-900/95 !shadow-2xl"
             showInteractive={false}
           />
         </ReactFlow>
       </main>
+
+      <HistoryPanel />
     </div>
   );
 }

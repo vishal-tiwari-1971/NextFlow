@@ -1,6 +1,7 @@
 import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
 import { collectNodeInputData, getIncomingEdges, topologicalSort } from '../lib/workflow-execution';
+import { saveRun } from '../lib/run-history';
 
 export type WorkflowNodeType =
   | 'textNode'
@@ -50,6 +51,7 @@ export interface CropImageNodeData extends WorkflowNodeBaseData {
 
 export interface ExtractFrameNodeData extends WorkflowNodeBaseData {
   timestamp: number;
+  timestampMode: 'seconds' | 'percentage';
 }
 
 export type WorkflowNodeData =
@@ -59,6 +61,11 @@ export type WorkflowNodeData =
   | UploadVideoNodeData
   | CropImageNodeData
   | ExtractFrameNodeData;
+
+export type WorkflowGraph = {
+  nodes: Node<WorkflowNodeData>[];
+  edges: Edge[];
+};
 
 export type WorkflowNodeDataPatch = Partial<{
   title: string;
@@ -81,6 +88,7 @@ export type WorkflowNodeDataPatch = Partial<{
   width: number;
   height: number;
   timestamp: number;
+  timestampMode: 'seconds' | 'percentage';
 }>;
 
 type WorkflowRunResponse = {
@@ -88,11 +96,26 @@ type WorkflowRunResponse = {
   response: string;
 };
 
+const RUNNING_PREVIEW_MS_BY_NODE_TYPE: Record<WorkflowNodeType, number> = {
+  textNode: 220,
+  cropImageNode: 260,
+  extractFrameNode: 260,
+  imageNode: 700,
+  uploadVideoNode: 900,
+  llmNode: 650,
+};
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const getRunningPreviewMs = (type: WorkflowNodeType) =>
+  RUNNING_PREVIEW_MS_BY_NODE_TYPE[type] ?? 300;
+
 interface WorkflowStore {
   nodes: Node<WorkflowNodeData>[];
   edges: Edge[];
   isRunning: boolean;
   runError: string | null;
+  setWorkflow: (workflow: WorkflowGraph) => void;
   addNode: (type: WorkflowNodeType, position: XYPosition) => void;
   deleteNode: (nodeId: string) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -177,8 +200,9 @@ const createNodeData = (type: WorkflowNodeType): WorkflowNodeData => {
     case 'extractFrameNode':
       return {
         title: 'Extract Frame Node',
-        description: 'Mock frame extraction from a video URL and timestamp.',
+        description: 'Extract a frame from video using FFmpeg at a timestamp.',
         timestamp: 1,
+        timestampMode: 'seconds',
         inputs: {},
         outputs: {},
         status: 'idle',
@@ -260,6 +284,14 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   edges: [],
   isRunning: false,
   runError: null,
+  setWorkflow: ({ nodes, edges }) => {
+    set({
+      nodes,
+      edges,
+      isRunning: false,
+      runError: null,
+    });
+  },
   addNode: (type, position) => {
     const nodeId = createNodeId(type);
 
@@ -385,7 +417,68 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
           },
         };
 
+        set({ nodes: [...workingNodes] });
+        await wait(getRunningPreviewMs(node.type as WorkflowNodeType));
+
         if (node.type !== 'llmNode') {
+          if (node.type === 'extractFrameNode') {
+            const frameData = workingNodes[nodeIndex].data as ExtractFrameNodeData;
+            const sourceVideoUrl =
+              typeof inputs.video_url === 'string'
+                ? inputs.video_url
+                : typeof frameData.inputs?.video_url === 'string'
+                  ? (frameData.inputs.video_url as string)
+                  : '';
+
+            if (!sourceVideoUrl) {
+              throw new Error('Extract Frame Node is missing an input video URL.');
+            }
+
+            const extractResponse = await fetch('/api/extract-frame', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                videoUrl: sourceVideoUrl,
+                timestamp: frameData.timestamp,
+                timestampMode: frameData.timestampMode,
+              }),
+            });
+
+            if (!extractResponse.ok) {
+              const payload = (await extractResponse.json().catch(() => null)) as
+                | { message?: string }
+                | null;
+              throw new Error(payload?.message || 'Failed to extract frame from video.');
+            }
+
+            const extractResult = (await extractResponse.json()) as {
+              frameImageUrl: string;
+              timestampSeconds: number;
+            };
+
+            const outputs = {
+              frame_image_url: extractResult.frameImageUrl,
+              frame_timestamp_seconds: extractResult.timestampSeconds,
+              source_video_url: sourceVideoUrl,
+            };
+
+            outputsByNodeId[nodeId] = outputs;
+
+            workingNodes[nodeIndex] = {
+              ...workingNodes[nodeIndex],
+              data: {
+                ...workingNodes[nodeIndex].data,
+                outputs,
+                status: 'success',
+              },
+            };
+
+            set({ nodes: [...workingNodes] });
+            continue;
+          }
+
           const outputs = executeNode(
             node.type as WorkflowNodeType,
             workingNodes[nodeIndex].data,
@@ -403,11 +496,9 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
             },
           };
 
-          set({ nodes: workingNodes });
+          set({ nodes: [...workingNodes] });
           continue;
         }
-
-        set({ nodes: workingNodes });
 
         const response = await fetch('/api/run-workflow', {
           method: 'POST',
@@ -445,10 +536,25 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
           },
         };
 
-        set({ nodes: workingNodes });
+        set({ nodes: [...workingNodes] });
       }
+
+      await saveRun({
+        workflowName: 'Workflow Run',
+        status: 'success',
+        result: {
+          nodes: workingNodes,
+          edges: state.edges,
+        },
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Workflow execution failed.';
+
+      await saveRun({
+        workflowName: 'Workflow Run',
+        status: 'error',
+        error: message,
+      });
 
       set((currentState) => ({
         nodes: currentState.nodes.map((node) =>

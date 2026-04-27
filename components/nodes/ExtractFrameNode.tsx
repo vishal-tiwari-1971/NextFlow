@@ -8,6 +8,8 @@ type ExtractFrameNodeShape = Node<ExtractFrameNodeData, 'extractFrameNode'>;
 
 export default function ExtractFrameNode({ data, id }: NodeProps<ExtractFrameNodeShape>) {
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
+  const isRunning = data.status === 'running';
+  const timestampMode = data.timestampMode ?? 'seconds';
 
   const handleTimestampChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
@@ -17,8 +19,22 @@ export default function ExtractFrameNode({ data, id }: NodeProps<ExtractFrameNod
     [id, updateNodeData],
   );
 
+  const handleModeChange = useCallback(
+    (e: ChangeEvent<HTMLSelectElement>) => {
+      const nextMode = e.target.value === 'percentage' ? 'percentage' : 'seconds';
+      updateNodeData(id, { timestampMode: nextMode });
+    },
+    [id, updateNodeData],
+  );
+
   return (
-    <div className="min-w-72 max-w-sm rounded-2xl border border-violet-400/25 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm">
+    <div
+      className={`min-w-72 max-w-sm rounded-2xl border border-violet-400/25 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm transition-[box-shadow,border-color] duration-300 ${
+        isRunning
+          ? 'animate-pulse border-violet-100 ring-4 ring-violet-200/80 ring-offset-2 ring-offset-slate-950 shadow-[0_0_0_2px_rgba(196,181,253,0.8),0_0_48px_rgba(139,92,246,0.95),0_0_124px_rgba(99,102,241,0.55)]'
+          : ''
+      }`}
+    >
       <Handle
         type="target"
         position={Position.Left}
@@ -35,10 +51,26 @@ export default function ExtractFrameNode({ data, id }: NodeProps<ExtractFrameNod
 
         <p className="text-xs leading-5 text-slate-400">{data.description}</p>
 
-        <label className="block text-[10px] uppercase tracking-[0.24em] text-slate-500">Timestamp (s)</label>
+        <label className="block text-[10px] uppercase tracking-[0.24em] text-slate-500">
+          Timestamp Type
+        </label>
+        <select
+          value={timestampMode}
+          onChange={handleModeChange}
+          className="w-full rounded border border-slate-700 bg-slate-950 p-2 text-xs text-slate-200"
+        >
+          <option value="seconds">Seconds</option>
+          <option value="percentage">Percentage</option>
+        </select>
+
+        <label className="block text-[10px] uppercase tracking-[0.24em] text-slate-500">
+          {timestampMode === 'percentage' ? 'Timestamp (%)' : 'Timestamp (s)'}
+        </label>
         <input
           type="number"
           min={0}
+          max={timestampMode === 'percentage' ? 100 : undefined}
+          step={timestampMode === 'percentage' ? 0.1 : 0.1}
           value={data.timestamp}
           onChange={handleTimestampChange}
           className="w-full rounded border border-slate-700 bg-slate-950 p-2 text-xs text-slate-200"
