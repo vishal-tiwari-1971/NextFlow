@@ -21,7 +21,7 @@ export default function TextNode({ data, id }: NodeProps<TextNodeShape>) {
     <div
       className={`min-w-72 max-w-sm rounded-2xl border border-sky-400/25 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm transition-[box-shadow,border-color] duration-300 ${
         isRunning
-          ? 'animate-pulse border-sky-200 ring-4 ring-sky-300/80 ring-offset-2 ring-offset-slate-950 shadow-[0_0_0_2px_rgba(125,211,252,0.8),0_0_46px_rgba(56,189,248,0.95),0_0_120px_rgba(14,165,233,0.55)]'
+          ? 'animate-[pulse_0.95s_ease-in-out_infinite] brightness-110 saturate-150 border-sky-100 ring-4 ring-sky-200/90 ring-offset-2 ring-offset-slate-950 shadow-[0_0_0_2px_rgba(186,230,253,0.9),0_0_60px_rgba(56,189,248,1),0_0_140px_rgba(14,165,233,0.7)]'
           : ''
       }`}
     >

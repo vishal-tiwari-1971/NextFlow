@@ -22,6 +22,12 @@ import TextNode from '../../components/nodes/TextNode';
 import UploadVideoNode from '../../components/nodes/UploadVideoNode';
 import { type WorkflowNodeType, useWorkflowStore } from '../../store/useWorkflowStore';
 
+type NodeContextMenuState = {
+  nodeId: string;
+  x: number;
+  y: number;
+} | null;
+
 const nodeTypes: NodeTypes = {
   textNode: TextNode,
   imageNode: ImageNode,
@@ -85,6 +91,7 @@ function WorkflowCanvas() {
   const edges = useWorkflowStore((state) => state.edges);
   const addNode = useWorkflowStore((state) => state.addNode);
   const deleteNode = useWorkflowStore((state) => state.deleteNode);
+  const runNode = useWorkflowStore((state) => state.runNode);
   const onConnect = useWorkflowStore((state) => state.onConnect);
   const onNodesChange = useWorkflowStore((state) => state.onNodesChange);
   const onEdgesChange = useWorkflowStore((state) => state.onEdgesChange);
@@ -92,6 +99,7 @@ function WorkflowCanvas() {
   const isRunning = useWorkflowStore((state) => state.isRunning);
   const runError = useWorkflowStore((state) => state.runError);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [contextMenu, setContextMenu] = useState<NodeContextMenuState>(null);
 
   const handleAddNode = (type: WorkflowNodeType) => {
     addNode(type, randomPosition());
@@ -204,7 +212,16 @@ function WorkflowCanvas() {
           onConnect={onConnect}
           onNodeContextMenu={(event, node) => {
             event.preventDefault();
-            deleteNode(node.id);
+            setContextMenu({
+              nodeId: node.id,
+              x: Math.min(event.clientX, window.innerWidth - 180),
+              y: Math.min(event.clientY, window.innerHeight - 120),
+            });
+          }}
+          onPaneClick={() => setContextMenu(null)}
+          onPaneContextMenu={(event) => {
+            event.preventDefault();
+            setContextMenu(null);
           }}
           fitView
           snapToGrid
@@ -224,7 +241,7 @@ function WorkflowCanvas() {
           minZoom={0.2}
           maxZoom={1.8}
         >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#1e293b" />
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#64748b" />
           <MiniMap
             className="!bottom-4 !right-4 !rounded-2xl !border !border-white/10 !bg-slate-900/95 !shadow-2xl"
             nodeColor={(node) => {
@@ -243,6 +260,34 @@ function WorkflowCanvas() {
             showInteractive={false}
           />
         </ReactFlow>
+
+        {contextMenu && (
+          <div
+            className="fixed z-50 min-w-44 rounded-2xl border border-white/10 bg-slate-950/95 p-2 shadow-[0_24px_80px_rgba(2,6,23,0.65)] backdrop-blur-xl"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                void runNode(contextMenu.nodeId);
+                setContextMenu(null);
+              }}
+              className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-slate-100 transition hover:bg-white/10"
+            >
+              Run node
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                deleteNode(contextMenu.nodeId);
+                setContextMenu(null);
+              }}
+              className="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-rose-200 transition hover:bg-rose-500/10"
+            >
+              Delete node
+            </button>
+          </div>
+        )}
       </main>
 
       <HistoryPanel />
