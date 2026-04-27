@@ -174,3 +174,61 @@ export const topologicalSort = (
 
   return result;
 };
+
+export const groupNodesByExecutionLevel = (
+  nodes: Node<WorkflowNodeData>[],
+  edges: Edge[],
+): string[][] => {
+  // Build dependency graph: nodeId -> set of nodes that depend on it
+  const dependents: Map<string, Set<string>> = new Map();
+  const incomingCount: Map<string, number> = new Map();
+
+  for (const node of nodes) {
+    dependents.set(node.id, new Set());
+    incomingCount.set(node.id, 0);
+  }
+
+  for (const edge of edges) {
+    const deps = dependents.get(edge.source) ?? new Set();
+    deps.add(edge.target);
+    dependents.set(edge.source, deps);
+
+    const count = incomingCount.get(edge.target) ?? 0;
+    incomingCount.set(edge.target, count + 1);
+  }
+
+  // Use Kahn's algorithm to group nodes into execution levels
+  const levels: string[][] = [];
+  const processed = new Set<string>();
+  const queue: string[] = [];
+
+  // Start with nodes that have no dependencies
+  for (const [nodeId, count] of incomingCount.entries()) {
+    if (count === 0) {
+      queue.push(nodeId);
+    }
+  }
+
+  while (queue.length > 0) {
+    const currentLevel = [...queue];
+    levels.push(currentLevel);
+    queue.length = 0;
+
+    for (const nodeId of currentLevel) {
+      processed.add(nodeId);
+
+      // Reduce in-degree for all dependent nodes
+      const deps = dependents.get(nodeId) ?? new Set();
+      for (const dependentId of deps) {
+        const count = incomingCount.get(dependentId) ?? 0;
+        incomingCount.set(dependentId, count - 1);
+
+        if (count - 1 === 0 && !processed.has(dependentId)) {
+          queue.push(dependentId);
+        }
+      }
+    }
+  }
+
+  return levels;
+};

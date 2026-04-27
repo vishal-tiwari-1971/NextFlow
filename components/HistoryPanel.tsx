@@ -146,6 +146,7 @@ const parseHistory = (raw: string): WorkflowRun[] => {
 export default function HistoryPanel() {
   const [history, setHistory] = useState<WorkflowRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<WorkflowRun | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const nodes = useWorkflowStore((state) => state.nodes);
   const edges = useWorkflowStore((state) => state.edges);
   const setWorkflow = useWorkflowStore((state) => state.setWorkflow);
@@ -202,12 +203,26 @@ export default function HistoryPanel() {
   const selectedRunNodes = useMemo(() => selectedRun?.nodes ?? [], [selectedRun]);
 
   return (
-    <aside className="flex h-screen w-[300px] shrink-0 flex-col border-l border-gray-700 bg-gray-900 text-white">
-      <div className="border-b border-gray-700 px-4 py-4">
-        <h2 className="text-lg font-semibold">History Panel</h2>
+    <aside
+      className={`flex h-screen shrink-0 flex-col border-l border-gray-700 bg-gray-900 text-white transition-[width,padding] duration-300 ${
+        isCollapsed ? 'w-[84px]' : 'w-[300px]'
+      }`}
+    >
+      <div className={`border-b border-gray-700 py-4 ${isCollapsed ? 'px-3' : 'px-4'}`}>
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+          {!isCollapsed && <h2 className="text-lg font-semibold">History Panel</h2>}
+          <button
+            type="button"
+            onClick={() => setIsCollapsed((prev) => !prev)}
+            className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-white/20 hover:bg-white/10"
+            aria-label={isCollapsed ? 'Expand history panel' : 'Collapse history panel'}
+          >
+            {isCollapsed ? '<<' : '>>'}
+          </button>
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {!isCollapsed && <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-b border-gray-700 px-3 py-3">
           <p className="mb-2 text-xs uppercase tracking-[0.22em] text-gray-400">Runs</p>
 
@@ -286,7 +301,15 @@ export default function HistoryPanel() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
+
+      {isCollapsed && (
+        <div className="flex min-h-0 flex-1 items-start justify-center px-2 py-4">
+          <p className="rotate-180 text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-400 [writing-mode:vertical-rl]">
+            History
+          </p>
+        </div>
+      )}
     </aside>
   );
 }

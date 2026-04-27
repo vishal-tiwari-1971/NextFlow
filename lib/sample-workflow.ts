@@ -80,22 +80,23 @@ export function createSampleWorkflow(): WorkflowGraph {
       | LLMNodeData
     >
   > = [
+    // ===== BRANCH 1: IMAGE PROCESSING =====
     {
       id: 'image-1',
       type: 'imageNode',
-      position: { x: 120, y: 180 },
+      position: { x: 40, y: 90 },
       data: createImageData(),
     },
     {
       id: 'crop-1',
       type: 'cropImageNode',
-      position: { x: 430, y: 180 },
+      position: { x: 360, y: 90 },
       data: createCropData(),
     },
     {
       id: 'text-1',
       type: 'textNode',
-      position: { x: 120, y: 30 },
+      position: { x: 680, y: 20 },
       data: createTextData(
         'You are a professional marketing copywriter. Generate a compelling one-paragraph product description.',
         'System Prompt Context',
@@ -105,7 +106,7 @@ export function createSampleWorkflow(): WorkflowGraph {
     {
       id: 'text-2',
       type: 'textNode',
-      position: { x: 430, y: 30 },
+      position: { x: 680, y: 170 },
       data: createTextData(
         'Product details: Wireless Bluetooth headphones. Features: noise cancellation, 30-hour battery,foldable design.',
         'Product Details',
@@ -115,59 +116,65 @@ export function createSampleWorkflow(): WorkflowGraph {
     {
       id: 'llm-1',
       type: 'llmNode',
-      position: { x: 760, y: 150 },
+      position: { x: 1000, y: 120 },
       data: createLlmData(
-        'Product Description LLM',
-        'Generates an initial product narrative from image crop and text context.',
+        'Branch 1: Product Description',
+        'Generates product narrative from image crop and text context.',
         'Write a polished 60-word product description with one headline and one CTA.',
       ),
     },
+
+    // ===== BRANCH 2: VIDEO PROCESSING =====
     {
       id: 'video-1',
       type: 'uploadVideoNode',
-      position: { x: 120, y: 470 },
+      position: { x: 40, y: 470 },
       data: createVideoData(),
     },
     {
       id: 'frame-1',
       type: 'extractFrameNode',
-      position: { x: 430, y: 470 },
+      position: { x: 360, y: 470 },
       data: createExtractFrameData(),
     },
     {
       id: 'text-3',
       type: 'textNode',
-      position: { x: 760, y: 470 },
+      position: { x: 680, y: 470 },
       data: createTextData(
         'Create final ad copy by combining product description, cropped image cues, and extracted video frame context.',
-        'Final Prompt',
+        'Branch 2: Final Prompt',
         'Instruction prompt for convergence LLM node.',
       ),
     },
+
+    // ===== CONVERGENCE: FINAL LLM =====
     {
-      id: 'llm-2',
+      id: 'llm-final',
       type: 'llmNode',
-      position: { x: 1120, y: 300 },
+      position: { x: 1360, y: 260 },
       data: createLlmData(
-        'Final LLM Node',
+        'Final Campaign LLM',
         'Combines both branches into final campaign-ready output.',
-        'Produce: 1) 3 taglines, 2) one 50-word ad script, ',
+        'Produce: 1) 3 taglines, 2) one 50-word ad script incorporating both visual and video insights.',
       ),
     },
   ];
 
   const edges: Edge[] = [
+    // Branch 1 edges: Image → Crop → Text → Text → LLM-1
     { id: 'edge-image-crop', source: 'image-1', target: 'crop-1' },
-    { id: 'edge-crop-llm1', source: 'crop-1', target: 'llm-1' },
-    { id: 'edge-text1-llm1', source: 'text-1', target: 'llm-1' },
+    { id: 'edge-crop-text1', source: 'crop-1', target: 'text-1' },
+    { id: 'edge-text1-text2', source: 'text-1', target: 'text-2' },
     { id: 'edge-text2-llm1', source: 'text-2', target: 'llm-1' },
 
+    // Branch 2 edges: Video → Frame → Text
     { id: 'edge-video-frame', source: 'video-1', target: 'frame-1' },
+    { id: 'edge-frame-text3', source: 'frame-1', target: 'text-3' },
 
-    { id: 'edge-llm1-llm2', source: 'llm-1', target: 'llm-2' },
-    { id: 'edge-crop-llm2', source: 'crop-1', target: 'llm-2' },
-    { id: 'edge-frame-llm2', source: 'frame-1', target: 'llm-2' },
-    { id: 'edge-text3-llm2', source: 'text-3', target: 'llm-2' },
+    // Convergence edges: Both branches feed into final LLM
+    { id: 'edge-llm1-final', source: 'llm-1', target: 'llm-final' },
+    { id: 'edge-text3-final', source: 'text-3', target: 'llm-final' },
   ];
 
   return { nodes, edges };

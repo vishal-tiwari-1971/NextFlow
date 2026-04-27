@@ -1,6 +1,6 @@
 import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
-import { collectNodeInputData, getIncomingEdges, topologicalSort } from '../lib/workflow-execution';
+import { collectNodeInputData, getIncomingEdges, topologicalSort, groupNodesByExecutionLevel } from '../lib/workflow-execution';
 import { saveRun } from '../lib/run-history';
 
 export type WorkflowNodeType =
@@ -127,6 +127,7 @@ interface WorkflowStore {
   getNodeInputData: (nodeId: string) => Record<string, unknown>;
   updateNodeOutputs: (nodeId: string, outputs: Record<string, unknown>) => void;
   setWorkflowRunState: (state: { isRunning: boolean; runError?: string | null }) => void;
+  runNode: (nodeId: string) => Promise<void>;
   runWorkflow: () => Promise<void>;
 }
 
@@ -383,6 +384,167 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   setWorkflowRunState: ({ isRunning, runError }) => {
     set({ isRunning, runError: runError ?? null });
   },
+  runNode: async (nodeId) => {
+    if (get().isRunning) {
+      return;
+    }
+
+    const state = get();
+    const nodeIndex = state.nodes.findIndex((node) => node.id === nodeId);
+
+    if (nodeIndex === -1) {
+      return;
+    }
+
+    const node = state.nodes[nodeIndex];
+    const inputs = collectNodeInputData(state.nodes, state.edges, nodeId);
+
+    set((currentState) => ({
+      nodes: currentState.nodes.map((currentNode) =>
+        currentNode.id === nodeId
+          ? {
+              ...currentNode,
+              data: {
+                ...currentNode.data,
+                inputs,
+                error: null,
+                runId: null,
+                status: 'running',
+              },
+            }
+          : currentNode,
+      ),
+      runError: null,
+    }));
+
+    await wait(getRunningPreviewMs(node.type as WorkflowNodeType));
+
+    try {
+      let outputs: Record<string, unknown> = {};
+      let runId: string | null = null;
+
+      if (node.type === 'llmNode') {
+        const response = await fetch('/api/run-workflow', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            nodeId,
+            workflow: {
+              nodes: state.nodes,
+              edges: state.edges,
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+          throw new Error(payload?.message || 'Failed to run node.');
+        }
+
+        const result = (await response.json()) as WorkflowRunResponse;
+        outputs = {
+          response: result.response,
+        };
+        runId = result.runId;
+      } else if (node.type === 'extractFrameNode') {
+        const frameData = node.data as ExtractFrameNodeData;
+        const sourceVideoUrl =
+          typeof inputs.video_url === 'string'
+            ? inputs.video_url
+            : typeof frameData.inputs?.video_url === 'string'
+              ? (frameData.inputs.video_url as string)
+              : '';
+
+        if (!sourceVideoUrl) {
+          throw new Error('Extract Frame Node is missing an input video URL.');
+        }
+
+        const extractResponse = await fetch('/api/extract-frame', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoUrl: sourceVideoUrl,
+            timestamp: frameData.timestamp,
+            timestampMode: frameData.timestampMode,
+          }),
+        });
+
+        if (!extractResponse.ok) {
+          const payload = (await extractResponse.json().catch(() => null)) as
+            | { message?: string }
+            | null;
+          throw new Error(payload?.message || 'Failed to extract frame from video.');
+        }
+
+        const extractResult = (await extractResponse.json()) as {
+          frameImageUrl: string;
+          timestampSeconds: number;
+        };
+
+        outputs = {
+          frame_image_url: extractResult.frameImageUrl,
+          frame_timestamp_seconds: extractResult.timestampSeconds,
+          source_video_url: sourceVideoUrl,
+        };
+      } else {
+        outputs = executeNode(node.type as WorkflowNodeType, node.data, inputs);
+      }
+
+      set((currentState) => ({
+        nodes: currentState.nodes.map((currentNode) =>
+          currentNode.id === nodeId
+            ? {
+                ...currentNode,
+                data: {
+                  ...currentNode.data,
+                  outputs,
+                  status: 'success',
+                  error: null,
+                  runId,
+                },
+              }
+            : currentNode,
+        ),
+      }));
+
+      await saveRun({
+        workflowName: 'Node Run',
+        status: 'success',
+        result: {
+          nodes: get().nodes,
+          edges: get().edges,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Node execution failed.';
+
+      await saveRun({
+        workflowName: 'Node Run',
+        status: 'error',
+        error: message,
+      });
+
+      set((currentState) => ({
+        nodes: currentState.nodes.map((currentNode) =>
+          currentNode.id === nodeId
+            ? {
+                ...currentNode,
+                data: {
+                  ...currentNode.data,
+                  status: 'error',
+                  error: message,
+                },
+              }
+            : currentNode,
+        ),
+        runError: message,
+      }));
+    }
+  },
   runWorkflow: async () => {
     if (get().isRunning) {
       return;
@@ -392,151 +554,182 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
     try {
       const state = get();
-      const executionOrder = topologicalSort(state.nodes, state.edges);
+      // Group nodes by execution level to enable parallel execution
+      const executionLevels = groupNodesByExecutionLevel(state.nodes, state.edges);
       let workingNodes = [...state.nodes];
       const outputsByNodeId: Record<string, Record<string, unknown>> = {};
 
-      for (const nodeId of executionOrder) {
-        const nodeIndex = workingNodes.findIndex((node) => node.id === nodeId);
+      // Execute each level in sequence, but nodes within a level run in parallel
+      for (const level of executionLevels) {
+        // Mark all nodes in this level as running
+        const levelNodeIndices = level
+          .map((nodeId) => workingNodes.findIndex((node) => node.id === nodeId))
+          .filter((idx) => idx !== -1);
 
-        if (nodeIndex === -1) {
-          continue;
+        for (const nodeIndex of levelNodeIndices) {
+          const node = workingNodes[nodeIndex];
+          const inputs = collectNodeInputData(workingNodes, state.edges, node.id);
+
+          workingNodes[nodeIndex] = {
+            ...node,
+            data: {
+              ...node.data,
+              inputs,
+              error: null,
+              runId: null,
+              status: 'running',
+            },
+          };
         }
 
-        const node = workingNodes[nodeIndex];
-        const inputs = collectNodeInputData(workingNodes, state.edges, nodeId);
-
-        workingNodes[nodeIndex] = {
-          ...node,
-          data: {
-            ...node.data,
-            inputs,
-            error: null,
-            runId: null,
-            status: 'running',
-          },
-        };
-
         set({ nodes: [...workingNodes] });
-        await wait(getRunningPreviewMs(node.type as WorkflowNodeType));
 
-        if (node.type !== 'llmNode') {
-          if (node.type === 'extractFrameNode') {
-            const frameData = workingNodes[nodeIndex].data as ExtractFrameNodeData;
-            const sourceVideoUrl =
-              typeof inputs.video_url === 'string'
-                ? inputs.video_url
-                : typeof frameData.inputs?.video_url === 'string'
-                  ? (frameData.inputs.video_url as string)
-                  : '';
+        // Execute all nodes in this level in parallel
+        const levelPromises = level.map(async (nodeId) => {
+          const nodeIndex = workingNodes.findIndex((node) => node.id === nodeId);
+          if (nodeIndex === -1) {
+            return null;
+          }
 
-            if (!sourceVideoUrl) {
-              throw new Error('Extract Frame Node is missing an input video URL.');
+          const node = workingNodes[nodeIndex];
+          const inputs = collectNodeInputData(workingNodes, state.edges, nodeId);
+
+          try {
+            // Add simulation delay for visual feedback
+            await wait(getRunningPreviewMs(node.type as WorkflowNodeType));
+
+            if (node.type !== 'llmNode') {
+              if (node.type === 'extractFrameNode') {
+                const frameData = workingNodes[nodeIndex].data as ExtractFrameNodeData;
+                const sourceVideoUrl =
+                  typeof inputs.video_url === 'string'
+                    ? inputs.video_url
+                    : typeof frameData.inputs?.video_url === 'string'
+                      ? (frameData.inputs.video_url as string)
+                      : '';
+
+                if (!sourceVideoUrl) {
+                  throw new Error('Extract Frame Node is missing an input video URL.');
+                }
+
+                const extractResponse = await fetch('/api/extract-frame', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    videoUrl: sourceVideoUrl,
+                    timestamp: frameData.timestamp,
+                    timestampMode: frameData.timestampMode,
+                  }),
+                });
+
+                if (!extractResponse.ok) {
+                  const payload = (await extractResponse.json().catch(() => null)) as
+                    | { message?: string }
+                    | null;
+                  throw new Error(payload?.message || 'Failed to extract frame from video.');
+                }
+
+                const extractResult = (await extractResponse.json()) as {
+                  frameImageUrl: string;
+                  timestampSeconds: number;
+                };
+
+                const outputs = {
+                  frame_image_url: extractResult.frameImageUrl,
+                  frame_timestamp_seconds: extractResult.timestampSeconds,
+                  source_video_url: sourceVideoUrl,
+                };
+
+                outputsByNodeId[nodeId] = outputs;
+                return { nodeId, outputs, status: 'success' as const };
+              }
+
+              const outputs = executeNode(
+                node.type as WorkflowNodeType,
+                workingNodes[nodeIndex].data,
+                inputs,
+              );
+
+              outputsByNodeId[nodeId] = outputs;
+              return { nodeId, outputs, status: 'success' as const };
             }
 
-            const extractResponse = await fetch('/api/extract-frame', {
+            // Handle LLM nodes
+            const response = await fetch('/api/run-workflow', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                videoUrl: sourceVideoUrl,
-                timestamp: frameData.timestamp,
-                timestampMode: frameData.timestampMode,
+                nodeId,
+                workflow: {
+                  nodes: workingNodes,
+                  edges: state.edges,
+                },
               }),
             });
 
-            if (!extractResponse.ok) {
-              const payload = (await extractResponse.json().catch(() => null)) as
-                | { message?: string }
-                | null;
-              throw new Error(payload?.message || 'Failed to extract frame from video.');
+            if (!response.ok) {
+              const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+              throw new Error(payload?.message || 'Failed to run LLM node.');
             }
 
-            const extractResult = (await extractResponse.json()) as {
-              frameImageUrl: string;
-              timestampSeconds: number;
+            const result = (await response.json()) as WorkflowRunResponse;
+            const llmOutputs = {
+              response: result.response,
             };
 
-            const outputs = {
-              frame_image_url: extractResult.frameImageUrl,
-              frame_timestamp_seconds: extractResult.timestampSeconds,
-              source_video_url: sourceVideoUrl,
-            };
-
-            outputsByNodeId[nodeId] = outputs;
-
-            workingNodes[nodeIndex] = {
-              ...workingNodes[nodeIndex],
-              data: {
-                ...workingNodes[nodeIndex].data,
-                outputs,
-                status: 'success',
-              },
-            };
-
-            set({ nodes: [...workingNodes] });
-            continue;
+            outputsByNodeId[nodeId] = llmOutputs;
+            return { nodeId, outputs: llmOutputs, status: 'success' as const, runId: result.runId };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Node execution failed';
+            return { nodeId, outputs: {}, status: 'error' as const, error: errorMessage };
           }
-
-          const outputs = executeNode(
-            node.type as WorkflowNodeType,
-            workingNodes[nodeIndex].data,
-            inputs,
-          );
-
-          outputsByNodeId[nodeId] = outputs;
-
-          workingNodes[nodeIndex] = {
-            ...workingNodes[nodeIndex],
-            data: {
-              ...workingNodes[nodeIndex].data,
-              outputs,
-              status: 'success',
-            },
-          };
-
-          set({ nodes: [...workingNodes] });
-          continue;
-        }
-
-        const response = await fetch('/api/run-workflow', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            nodeId,
-            workflow: {
-              nodes: workingNodes,
-              edges: state.edges,
-            },
-          }),
         });
 
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-          throw new Error(payload?.message || 'Failed to run workflow.');
+        const levelResults = await Promise.all(levelPromises);
+
+        // Update working nodes with results from this level
+        for (const result of levelResults) {
+          if (result) {
+            const nodeIndex = workingNodes.findIndex((node) => node.id === result.nodeId);
+            if (nodeIndex !== -1) {
+              if (result.status === 'error') {
+                workingNodes[nodeIndex] = {
+                  ...workingNodes[nodeIndex],
+                  data: {
+                    ...workingNodes[nodeIndex].data,
+                    outputs: result.outputs,
+                    status: 'error',
+                    error: result.error || 'Unknown error',
+                  },
+                };
+              } else {
+                workingNodes[nodeIndex] = {
+                  ...workingNodes[nodeIndex],
+                  data: {
+                    ...workingNodes[nodeIndex].data,
+                    outputs: result.outputs,
+                    status: 'success',
+                    error: null,
+                    runId: result.runId || null,
+                  },
+                };
+              }
+            }
+          }
         }
 
-        const result = (await response.json()) as WorkflowRunResponse;
-        const llmOutputs = {
-          response: result.response,
-        };
-        outputsByNodeId[nodeId] = llmOutputs;
-
-        workingNodes[nodeIndex] = {
-          ...workingNodes[nodeIndex],
-          data: {
-            ...workingNodes[nodeIndex].data,
-            outputs: llmOutputs,
-            status: 'success',
-            error: null,
-            runId: result.runId,
-          },
-        };
-
         set({ nodes: [...workingNodes] });
+
+        // Check if any node in this level failed
+        const hasError = levelResults.some((r) => r && r.status === 'error');
+        if (hasError) {
+          const firstError = levelResults.find((r) => r && r.status === 'error');
+          throw new Error(firstError?.error || 'A node in the current level failed');
+        }
       }
 
       await saveRun({
