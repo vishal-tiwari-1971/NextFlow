@@ -8,6 +8,7 @@ type LLMNodeShape = Node<LLMNodeData, 'llmNode'>;
 
 export default function LLMNode({ data, id }: NodeProps<LLMNodeShape>) {
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
+  const isRunning = data.status === 'running';
 
   const handleSystemPromptChange = useCallback(
     (e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -24,7 +25,13 @@ export default function LLMNode({ data, id }: NodeProps<LLMNodeShape>) {
   );
 
   return (
-    <div className="min-w-72 max-w-sm rounded-2xl border border-emerald-400/20 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm">
+    <div
+      className={`min-w-72 max-w-sm rounded-2xl border border-emerald-400/20 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm transition-[box-shadow,border-color] duration-300 ${
+        isRunning
+          ? 'animate-pulse border-emerald-200 ring-4 ring-emerald-300/80 ring-offset-2 ring-offset-slate-950 shadow-[0_0_0_2px_rgba(110,231,183,0.8),0_0_50px_rgba(16,185,129,0.95),0_0_128px_rgba(5,150,105,0.55)]'
+          : ''
+      }`}
+    >
       <Handle
         type="target"
         position={Position.Left}

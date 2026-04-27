@@ -8,6 +8,7 @@ type CropImageNodeShape = Node<CropImageNodeData, 'cropImageNode'>;
 
 export default function CropImageNode({ data, id }: NodeProps<CropImageNodeShape>) {
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
+  const isRunning = data.status === 'running';
 
   const updateNumberField = useCallback(
     (field: 'x' | 'y' | 'width' | 'height', value: string) => {
@@ -18,7 +19,13 @@ export default function CropImageNode({ data, id }: NodeProps<CropImageNodeShape
   );
 
   return (
-    <div className="min-w-72 max-w-sm rounded-2xl border border-orange-400/25 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm">
+    <div
+      className={`min-w-72 max-w-sm rounded-2xl border border-orange-400/25 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm transition-[box-shadow,border-color] duration-300 ${
+        isRunning
+          ? 'animate-pulse border-orange-100 ring-4 ring-orange-200/80 ring-offset-2 ring-offset-slate-950 shadow-[0_0_0_2px_rgba(253,186,116,0.8),0_0_48px_rgba(249,115,22,0.95),0_0_122px_rgba(234,88,12,0.55)]'
+          : ''
+      }`}
+    >
       <Handle
         type="target"
         position={Position.Left}

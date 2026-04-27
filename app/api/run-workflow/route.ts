@@ -19,33 +19,67 @@ type WorkflowExecutionResponse = {
   response: string;
 };
 
-
 const buildFinalPrompt = (textList: string[], llmData: LLMNodeData) => {
+  const cleanedInputs = textList.map((text) => text.trim()).filter(Boolean);
   const numberedInputs =
-    textList.length > 0
-      ? textList.map((text, index) => `Input ${index + 1}: ${text}`).join('\n')
+    cleanedInputs.length > 0
+      ? cleanedInputs.map((text, index) => `${index + 1}. ${text}`).join('\n')
       : 'No text provided';
   const systemPrompt = llmData.systemPrompt || 'You are an AI assistant.';
   const userPrompt = llmData.userPrompt || llmData.prompt || '';
+  const isFinalNode =
+    userPrompt.toLowerCase().includes('marketing') || userPrompt.toLowerCase().includes('taglines');
 
-  return `
-${systemPrompt}
+  if (isFinalNode) {
+    return `
+You are a professional marketing strategist.
 
-You are given multiple user queries:
+You are given:
+- A product description
+- A cropped product image
+- A video frame image
 
+Your task:
+
+1. Generate THREE catchy taglines
+2. Write ONE 80-word advertisement script
+3. Create ONE engaging social media caption with hashtags
+
+Inputs:
 ${numberedInputs}
 
 Instructions:
-- Answer each query separately
-- Number each answer clearly as 1., 2., 3., etc.
-- Do NOT ignore any query
-- Keep the answer for each input tied only to that input
-- Do not merge unrelated inputs into a single response
+- Use BOTH images for context (product image + video frame)
+- Use ALL provided text inputs
+- Align messaging with product features
+- Keep tone energetic and modern
+- Clearly separate outputs into sections:
+  Taglines:
+  Ad Script:
+  Social Caption:
 
-Additional instruction:
-${userPrompt}
+Do NOT skip any section.
+Do NOT produce incomplete output.
+`.trim();
+  }
 
-If images are provided, use them only if relevant.
+  return `
+System:
+${systemPrompt}
+
+User requests:
+${numberedInputs}
+
+Output requirements:
+${userPrompt || 'Provide a direct, useful answer.'}
+
+Rules:
+- Return the final answer directly.
+- Do not explain what you are going to do.
+- Do not ask for more input unless the user request is empty.
+- If there is one request, return only one answer paragraph.
+- If there are multiple requests, answer each as 1., 2., 3., etc.
+- If images are provided, use them only when relevant.
 `.trim();
 };
 
@@ -89,6 +123,7 @@ export async function POST(request: Request) {
       images,
       videos,
     });
+    console.log('Images sent to LLM:', images);
     console.log('Text Inputs:', textList);
     const finalPrompt = buildFinalPrompt(textList, llmNode.data as LLMNodeData);
     const responseText = await generateGeminiText({

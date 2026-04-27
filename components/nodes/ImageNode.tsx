@@ -12,6 +12,7 @@ export default function ImageNode({ data, id }: NodeProps<ImageNodeShape>) {
   const updateNodeData = useWorkflowStore((state) => state.updateNodeData);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const isRunning = data.status === 'running';
 
   const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setSelectedFile(event.target.files?.[0] ?? null);
@@ -38,7 +39,13 @@ export default function ImageNode({ data, id }: NodeProps<ImageNodeShape>) {
   }, [id, selectedFile, updateNodeData]);
 
   return (
-    <div className="min-w-72 max-w-sm rounded-2xl border border-fuchsia-400/20 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm">
+    <div
+      className={`min-w-72 max-w-sm rounded-2xl border border-fuchsia-400/20 bg-slate-900/95 p-4 shadow-[0_20px_60px_rgba(2,6,23,0.55)] ring-1 ring-white/5 backdrop-blur-sm transition-[box-shadow,border-color] duration-300 ${
+        isRunning
+          ? 'animate-pulse border-fuchsia-200 ring-4 ring-fuchsia-300/80 ring-offset-2 ring-offset-slate-950 shadow-[0_0_0_2px_rgba(240,171,252,0.8),0_0_48px_rgba(217,70,239,0.95),0_0_124px_rgba(168,85,247,0.55)]'
+          : ''
+      }`}
+    >
       <Handle
         type="target"
         position={Position.Left}

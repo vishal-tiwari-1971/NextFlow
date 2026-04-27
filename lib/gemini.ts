@@ -4,6 +4,8 @@ const DEFAULT_MAX_RETRIES_PER_MODEL = Number(process.env.GEMINI_MAX_RETRIES_PER_
 const DEFAULT_INITIAL_BACKOFF_MS = Number(process.env.GEMINI_INITIAL_BACKOFF_MS || 1200);
 const DEFAULT_MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 512);
 const MODELS_CACHE_TTL_MS = Number(process.env.GEMINI_MODELS_CACHE_TTL_MS || 10 * 60 * 1000);
+const GEMINI_API_MAX_IMAGES = 31;
+const DEFAULT_MAX_IMAGE_INPUTS = Number(process.env.GEMINI_MAX_IMAGE_INPUTS || 8);
 
 type GeminiRequestOptions = {
   apiKey: string;
@@ -110,7 +112,10 @@ const extractGeminiText = (response: unknown): string => {
     }>;
   };
 
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = data.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text ?? '')
+    .join('')
+    .trim();
 
   if (!text) {
     throw new Error('Gemini response did not include any text.');
@@ -121,6 +126,23 @@ const extractGeminiText = (response: unknown): string => {
 
 const isRetryableStatus = (status: number) => status === 429 || status === 503;
 const isModelUnavailableStatus = (status: number) => status === 404;
+const isModelCapabilityError = (status: number, errorText: string) => {
+  if (status !== 400) {
+    return false;
+  }
+
+  const normalized = errorText.toLowerCase();
+
+  return (
+    normalized.includes('invalid_argument')
+    && (
+      normalized.includes('not supported by the model')
+      || normalized.includes('response modalities')
+      || normalized.includes('input modality is not enabled')
+      || normalized.includes('accepts the following combination of response modalities')
+    )
+  );
+};
 
 const toBase64 = async (url: string): Promise<{ data: string; mimeType: string } | null> => {
   try {
@@ -146,13 +168,18 @@ const toBase64 = async (url: string): Promise<{ data: string; mimeType: string }
 };
 
 const buildGeminiParts = async (prompt: string, imageUrls: string[] = []): Promise<GeminiPart[]> => {
-  if (imageUrls.length === 0) {
+  const uniqueImageUrls = [...new Set(imageUrls.filter(Boolean))].slice(
+    0,
+    Math.min(DEFAULT_MAX_IMAGE_INPUTS, GEMINI_API_MAX_IMAGES),
+  );
+
+  if (uniqueImageUrls.length === 0) {
     return [{ text: prompt }];
   }
 
   const parts: GeminiPart[] = [{ text: prompt }];
 
-  for (const imageUrl of imageUrls) {
+  for (const imageUrl of uniqueImageUrls) {
     const base64Payload = await toBase64(imageUrl);
 
     if (!base64Payload) {
@@ -176,6 +203,11 @@ export const generateGeminiText = async ({ apiKey, prompt, imageUrls = [] }: Gem
   }
 
   const models = await getModels(apiKey);
+  if (imageUrls.length > Math.min(DEFAULT_MAX_IMAGE_INPUTS, GEMINI_API_MAX_IMAGES)) {
+    console.warn(
+      `Gemini image inputs trimmed from ${imageUrls.length} to ${Math.min(DEFAULT_MAX_IMAGE_INPUTS, GEMINI_API_MAX_IMAGES)}.`,
+    );
+  }
   const parts = await buildGeminiParts(prompt, imageUrls);
 
   if (models.length === 0) {
@@ -215,6 +247,7 @@ export const generateGeminiText = async ({ apiKey, prompt, imageUrls = [] }: Gem
       const errorText = await response.text();
       const retryable = isRetryableStatus(response.status);
       const unavailableModel = isModelUnavailableStatus(response.status);
+      const incompatibleModel = isModelCapabilityError(response.status, errorText);
       const hasRetryAttempts = attempt < DEFAULT_MAX_RETRIES_PER_MODEL;
       const hasMoreModels = modelIndex < models.length - 1;
 
@@ -230,6 +263,10 @@ export const generateGeminiText = async ({ apiKey, prompt, imageUrls = [] }: Gem
       }
 
       if (unavailableModel && hasMoreModels) {
+        break;
+      }
+
+      if (incompatibleModel && hasMoreModels) {
         break;
       }
 
