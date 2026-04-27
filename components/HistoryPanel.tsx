@@ -89,13 +89,21 @@ const normalizeLegacyRun = (legacy: LegacyRun): WorkflowRun | null => {
     return null;
   }
 
-  const nodes = (legacy.result?.nodes ?? []).map((node) => ({
-    nodeId: node.id || 'unknown-node',
-    type: node.type || 'unknown',
-    inputs: node.data?.inputs ?? {},
-    outputs: node.data?.outputs ?? {},
-    status: node.data?.status === 'error' ? 'error' : 'success',
-  }));
+  const nodes = ((legacy.result?.nodes ?? []) as Array<{
+    id?: string;
+    type?: string;
+    data?: { inputs?: unknown; outputs?: unknown; status?: string };
+  }>).map((node) => {
+    const status = node.data?.status === 'error' ? 'error' : 'success';
+
+    return {
+      nodeId: node.id || 'unknown-node',
+      type: node.type || 'unknown',
+      inputs: node.data?.inputs ?? {},
+      outputs: node.data?.outputs ?? {},
+      status: status as 'success' | 'error',
+    } as WorkflowRunNode;
+  });
 
   return {
     runId: legacy.id,
