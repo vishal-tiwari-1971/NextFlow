@@ -66,8 +66,7 @@ const resolveFfprobeBin = async () => {
     return cachedFfprobeBin;
   }
 
-  const importedPath =
-    typeof ffprobePath === 'string' ? ffprobePath : ffprobePath.path;
+  const importedPath = (ffprobePath as any).path || ffprobePath;
 
   const candidates = [
     process.env.FFPROBE_PATH,
