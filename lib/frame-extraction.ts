@@ -285,7 +285,7 @@ const extractFrameViaTransloadit = async (
       url: videoUrl,
     },
     thumbnail: {
-      robot: '/video/thumbnail',
+      robot: '/video/thumbs',
       use: 'import_video',
       format: 'jpg',
       count: 1,
