@@ -1,7 +1,7 @@
 import { task } from '@trigger.dev/sdk';
 import type { Node, Edge } from '@xyflow/react';
 import type { WorkflowNodeData } from '../store/useWorkflowStore';
-import { groupNodesByExecutionLevel, collectNodeInputData } from '../lib/workflow-execution';
+import { groupNodesByExecutionLevel } from '../lib/workflow-execution';
 import { executeNodeTask, type ExecuteNodeOutput } from './execute-node';
 import { runLLMTask } from './run-llm';
 
@@ -42,11 +42,10 @@ export const runWorkflowTask = task({
 
           // Handle LLM nodes separately
           if (nodeType === 'llmNode') {
-            const inputs = collectNodeInputData(workingNodes, edges, nodeId);
             const prompt = (node.data as any).userPrompt || (node.data as any).prompt || '';
 
             try {
-              const result = await runLLMTask.run({
+              const result = await (runLLMTask as any).run({
                 prompt,
               });
 
@@ -70,7 +69,7 @@ export const runWorkflowTask = task({
 
           // Handle other node types
           try {
-            const result = await executeNodeTask.run({
+            const result = await (executeNodeTask as any).run({
               nodeId,
               nodeType,
               nodeData: node.data,
