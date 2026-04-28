@@ -1,6 +1,6 @@
 import { addEdge, applyEdgeChanges, applyNodeChanges, type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type XYPosition } from '@xyflow/react';
 import { create } from 'zustand';
-import { collectNodeInputData, getIncomingEdges, topologicalSort, groupNodesByExecutionLevel } from '../lib/workflow-execution';
+import { collectNodeInputData, getIncomingEdges, groupNodesByExecutionLevel } from '../lib/workflow-execution';
 import { saveRun } from '../lib/run-history';
 
 export type WorkflowNodeType =
