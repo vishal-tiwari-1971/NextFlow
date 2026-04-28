@@ -5,6 +5,9 @@ const nextConfig = {
     // ESLint will still run via npm lint command
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    serverComponentsExternalPackages: ['ffmpeg-static', 'ffprobe-static'],
+  },
 };
 
 module.exports = nextConfig;
