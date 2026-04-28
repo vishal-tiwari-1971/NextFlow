@@ -147,19 +147,24 @@ export default function HistoryPanel() {
   const [history, setHistory] = useState<WorkflowRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<WorkflowRun | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isClient, setIsClient] = useState(false);
   const nodes = useWorkflowStore((state) => state.nodes);
   const edges = useWorkflowStore((state) => state.edges);
   const setWorkflow = useWorkflowStore((state) => state.setWorkflow);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) {
       return;
     }
 
     const historyRecords = parseHistory(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
     setHistory(historyRecords);
     setSelectedRun((current) => current ?? historyRecords[0] ?? null);
-  }, []);
+  }, [isClient]);
 
   const highlightNodes = useCallback(
     (runNodes: WorkflowRunNode[]) => {
