@@ -46,15 +46,14 @@ export const runWorkflowTask = task({
             const prompt = (node.data as any).userPrompt || (node.data as any).prompt || '';
 
             try {
-              const result = await runLLMTask.trigger({
+              const result = await runLLMTask.run({
                 prompt,
               });
 
               const output: ExecuteNodeOutput = {
                 nodeId,
-                status: result.ok ? 'success' : 'error',
-                outputs: result.ok ? { response: result.output?.response || '' } : {},
-                error: result.ok ? undefined : 'LLM execution failed',
+                status: 'success',
+                outputs: { response: result.response || '' },
               };
 
               return { nodeId, output };
@@ -71,7 +70,7 @@ export const runWorkflowTask = task({
 
           // Handle other node types
           try {
-            const result = await executeNodeTask.trigger({
+            const result = await executeNodeTask.run({
               nodeId,
               nodeType,
               nodeData: node.data,
@@ -79,7 +78,7 @@ export const runWorkflowTask = task({
               edges: edges as any,
             });
 
-            return { nodeId, output: result.output };
+            return { nodeId, output: result };
           } catch (error) {
             const output: ExecuteNodeOutput = {
               nodeId,
