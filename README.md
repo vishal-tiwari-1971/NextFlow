@@ -335,6 +335,17 @@ Include `ffmpeg` and `ffprobe` binaries in the container for local extraction.
 - Verify all API keys are set
 - Run `npm run pre-deploy` locally to catch issues before deploying
 
+## Roadmap
+
+### Coming Soon (Next Sprint)
+- 🔐 **Clerk Authentication**: User authentication with email/OAuth (Google, GitHub)
+- 🗄️ **PostgreSQL Database**: Persistent workflow storage, user management, execution logs
+- 💾 **Cloud Workflow Storage**: Save, load, and version workflows per user
+- 🔗 **Workflow Sharing**: Share workflows with team members and manage permissions
+- 📈 **Advanced Analytics**: Execution metrics, performance insights, audit logs
+
+These features will enable multi-user collaboration, persistent state, and enterprise-ready workflow management.
+
 ## Contributing
 
 Contributions are welcome! Please:
