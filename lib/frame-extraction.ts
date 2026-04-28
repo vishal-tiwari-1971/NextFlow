@@ -265,6 +265,101 @@ const uploadImageFileToTransloadit = async (imagePath: string): Promise<string> 
   }
 };
 
+const extractFrameViaTransloadit = async (
+  videoUrl: string,
+  timestampSeconds: number | null,
+  timestampMode: TimestampMode,
+): Promise<{ frameImageUrl: string; timestampSeconds: number }> => {
+  const key = process.env.TRANSLOADIT_KEY;
+  const secret = process.env.TRANSLOADIT_SECRET;
+
+  if (!key || !secret) {
+    throw new Error('Missing TRANSLOADIT_KEY or TRANSLOADIT_SECRET environment variable.');
+  }
+
+  // Build assembly params: import the video then create a thumbnail
+  const params = createTransloaditParams(key);
+  params.steps = {
+    import_video: {
+      robot: '/http/import',
+      url: videoUrl,
+    },
+    thumbnail: {
+      robot: '/video/thumbnail',
+      use: 'import_video',
+      format: 'jpg',
+      count: 1,
+      size: '1280x720',
+    },
+  } as any;
+
+  if (timestampMode === 'percentage') {
+    // Transloadit accepts percent offsets via offset_mode
+    (params.steps as any).thumbnail.offset_mode = 'percent';
+    (params.steps as any).thumbnail.offset = timestampSeconds ?? 0;
+  } else {
+    (params.steps as any).thumbnail.offset_mode = 'time';
+    (params.steps as any).thumbnail.offset = `${timestampSeconds ?? 0}s`;
+  }
+
+  const { params: signedParams, signature } = signTransloaditParams(params as any, secret);
+
+  const formData = new FormData();
+  formData.append('params', signedParams);
+  formData.append('signature', signature);
+
+  const response = await fetch('https://api2.transloadit.com/assemblies', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Transloadit assembly creation failed: ${response.status} ${text}`);
+  }
+
+  const payloadText = await response.text();
+  const payload = (() => {
+    try {
+      return JSON.parse(payloadText) as unknown;
+    } catch {
+      return payloadText;
+    }
+  })();
+
+  const assemblyUrl =
+    (typeof payload === 'object' && payload && 'assembly_ssl_url' in payload
+      ? (payload as any).assembly_ssl_url
+      : null) || (typeof payload === 'object' && payload && 'assembly_url' in payload ? (payload as any).assembly_url : null);
+
+  if (!assemblyUrl) {
+    throw new Error('Transloadit did not return an assembly URL when creating thumbnail assembly.');
+  }
+
+  // Poll for result
+  const timeoutMs = 60_000;
+  const startedAt = Date.now();
+  for (;;) {
+    const statusResponse = await fetch(assemblyUrl);
+    if (!statusResponse.ok) {
+      const statusText = await statusResponse.text();
+      throw new Error(`Failed to fetch Transloadit assembly status (${statusResponse.status}): ${statusText}`);
+    }
+
+    const statusPayload = (await statusResponse.json()) as unknown;
+    const url = extractUploadedUrl(statusPayload);
+    if (url) {
+      return { frameImageUrl: url, timestampSeconds: timestampSeconds ?? 0 };
+    }
+
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error('Timed out waiting for Transloadit to finish thumbnail assembly.');
+    }
+
+    await sleep(1000);
+  }
+};
+
 const downloadVideoToFile = async (videoUrl: string, outputPath: string) => {
   const response = await fetch(videoUrl, {
     cache: 'no-store',
@@ -290,14 +385,34 @@ export const extractFrameFromVideoUrl = async ({
 
   try {
     await downloadVideoToFile(videoUrl, tempVideoPath);
-    const timestampSeconds = await resolveTimestampSeconds(tempVideoPath, timestamp, timestampMode);
-    await extractFrameToFile(tempVideoPath, tempFramePath, timestampSeconds);
-    const frameImageUrl = await uploadImageFileToTransloadit(tempFramePath);
 
-    return {
-      frameImageUrl,
-      timestampSeconds,
-    };
+    // Try to compute timestamp (may fail if ffprobe missing)
+    let timestampSeconds: number | null = null;
+    try {
+      timestampSeconds = await resolveTimestampSeconds(tempVideoPath, timestamp, timestampMode);
+    } catch (err) {
+      // ffprobe not available or failed; we'll fallback to Transloadit which can use percent offsets
+      timestampSeconds = null;
+    }
+
+    // Attempt local extraction if ffmpeg available; otherwise fallback to Transloadit
+    try {
+      if (timestampSeconds === null) {
+        throw new Error('ffprobe unavailable');
+      }
+
+      await extractFrameToFile(tempVideoPath, tempFramePath, timestampSeconds);
+      const frameImageUrl = await uploadImageFileToTransloadit(tempFramePath);
+
+      return {
+        frameImageUrl,
+        timestampSeconds,
+      };
+    } catch (err) {
+      // Fallback: use Transloadit to import the video and create a thumbnail remotely
+      const frameResult = await extractFrameViaTransloadit(videoUrl, timestampSeconds ?? (timestampMode === 'percentage' ? timestamp : 0), timestampMode);
+      return frameResult;
+    }
   } finally {
     await Promise.allSettled([
       fs.rm(tempVideoPath, { force: true }),
