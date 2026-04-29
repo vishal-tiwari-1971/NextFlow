@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useReactFlow } from '@xyflow/react';
+import { useAuth } from '@clerk/nextjs';
 import { useAppStore } from '../store/useAppStore';
 import { useWorkflowStore } from '../store/useWorkflowStore';
 
@@ -37,23 +38,32 @@ const getClientUser = (): DemoUser | null => {
 export default function NewWorkflowButton({ isCollapsed = false }: NewWorkflowButtonProps) {
   const router = useRouter();
   const reactFlow = useReactFlow();
+  const { isLoaded, userId } = useAuth();
   const setMode = useAppStore((state) => state.setMode);
   const setWorkflow = useWorkflowStore((state) => state.setWorkflow);
+  const setUserId = useWorkflowStore((state) => state.setUserId);
   const [user, setUser] = useState<DemoUser | null>(null);
 
   useEffect(() => {
-    setUser(getClientUser());
-  }, []);
-
-  const handleNewWorkflow = useCallback(() => {
-    const currentUser = getClientUser();
-
-    if (!currentUser) {
-      router.push('/login');
+    if (!isLoaded) {
       return;
     }
 
-    setUser(currentUser);
+    setUserId(userId ?? null);
+    setUser(userId ? { id: userId } : getClientUser());
+  }, [isLoaded, setUserId, userId]);
+
+  const handleNewWorkflow = useCallback(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    if (!userId) {
+      router.push('/sign-in');
+      return;
+    }
+
+    setUser({ id: userId });
     setMode('user');
     setWorkflow({ nodes: [], edges: [] });
 
@@ -63,13 +73,17 @@ export default function NewWorkflowButton({ isCollapsed = false }: NewWorkflowBu
         duration: 300,
       });
     });
-  }, [reactFlow, router, setMode, setWorkflow]);
+  }, [isLoaded, reactFlow, router, setMode, setWorkflow, userId]);
+
+  if (!isLoaded) {
+    return null;
+  }
 
   return (
     <button
       type="button"
       onClick={handleNewWorkflow}
-      title={user ? 'Create a new blank workflow' : 'Login required for new workflow'}
+      title={user ? 'Create a new blank workflow' : 'Sign in required for new workflow'}
       className={`flex w-full items-center justify-center rounded-2xl border border-indigo-400/30 bg-indigo-400/10 text-sm font-medium text-indigo-100 transition hover:border-indigo-400/50 hover:bg-indigo-400/20 ${
         isCollapsed ? 'mt-2 px-0 py-3' : 'mt-3 px-4 py-3'
       }`}

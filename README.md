@@ -258,7 +258,7 @@ TRIGGER_API_KEY=your_trigger_dev_key
 
 ### Adding a New Node Type
 
-1. **Create component** in `components/nodes/YourNode.tsx`:
+1. **Create component** in `components/nodes/YourNodeName.tsx`:
 ```tsx
 'use client';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
@@ -284,13 +284,6 @@ const nodeTypes: NodeTypes = {
 
 4. **Implement in execution logic** (`lib/workflow-execution.ts` or `trigger/execute-node.ts`).
 
-### Running Tests
-
-```bash
-npm run lint          # Run ESLint
-npm run type-check    # Run TypeScript checks (via next build)
-npm run pre-deploy    # Full pre-deployment validation
-```
 
 ### Debugging
 
@@ -311,21 +304,7 @@ Enable verbose logging in node execution by checking browser console and server 
 - ✅ All env vars set in Vercel dashboard
 - ✅ Test extract-frame fallback works (uses Transloadit if FFmpeg unavailable)
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment guide, troubleshooting, and alternative hosting options.
 
-### Docker (Self-Hosted with FFmpeg)
-
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY .next ./
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-Include `ffmpeg` and `ffprobe` binaries in the container for local extraction.
 
 ## Performance Tips
 
@@ -345,7 +324,7 @@ Include `ffmpeg` and `ffprobe` binaries in the container for local extraction.
 
 ### "Transloadit assembly failed"
 - Check that `TRANSLOADIT_KEY` and `TRANSLOADIT_SECRET` are correct
-- Verify Transloadit plan supports `/http/import` and `/video/thumbnail` robots
+- Verify Transloadit plan supports `/http/import` and `/video/thumb` robots
 
 ### Workflow doesn't execute
 - Check browser console for JavaScript errors
@@ -360,11 +339,7 @@ Include `ffmpeg` and `ffprobe` binaries in the container for local extraction.
 - 💾 **Cloud Workflow Storage**: Save, load, and manage workflows per user
 - 🔒 **Multi-Tenancy**: User data isolation with Clerk user IDs
 
-**See Also**:
-- [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - What's been implemented and what's next
-- [SETUP_GUIDE.md](SETUP_GUIDE.md) - Complete Clerk & Neon setup instructions
-- [CLERK_UI_GUIDE.md](CLERK_UI_GUIDE.md) - Integrating Clerk UI components
-- [ENV_VARIABLES.md](ENV_VARIABLES.md) - All required API keys and how to get them
+
 
 ### Coming Soon (Future Sprints)
 - 🔗 **Workflow Sharing**: Share workflows with team members and manage permissions
@@ -396,6 +371,5 @@ For issues, questions, or feature requests, please open an issue on GitHub or co
 ---
 
 **Version**: 1.0.0  
-**Last Updated**: April 28, 2026  
 **Next.js**: 14.2.25  
 **React**: 18.3.1
