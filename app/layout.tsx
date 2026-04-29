@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import '@xyflow/react/dist/style.css';
 import './globals.css';
+import { ClerkAuthProvider } from '../lib/clerk-provider';
 
 export const metadata: Metadata = {
   title: 'Nextflow',
@@ -14,7 +15,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        <ClerkAuthProvider>{children}</ClerkAuthProvider>
+      </body>
     </html>
   );
 }

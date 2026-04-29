@@ -10,8 +10,17 @@ export type WorkflowRunRecord = {
 
 const DEMO_HISTORY_KEY = 'workflowHistory';
 const MAX_DEMO_HISTORY_ITEMS = 10;
+const HISTORY_UPDATED_EVENT = 'nextflow:history-updated';
 
 const canUseBrowserStorage = () => typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+
+const notifyHistoryUpdated = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(new Event(HISTORY_UPDATED_EVENT));
+};
 
 export async function saveRun(run: Omit<WorkflowRunRecord, 'id' | 'createdAt'> & Partial<WorkflowRunRecord>) {
   const mode = useAppStore.getState().mode;
@@ -30,6 +39,7 @@ export async function saveRun(run: Omit<WorkflowRunRecord, 'id' | 'createdAt'> &
     const existing = JSON.parse(localStorage.getItem(DEMO_HISTORY_KEY) || '[]') as WorkflowRunRecord[];
     existing.unshift(normalizedRun);
     localStorage.setItem(DEMO_HISTORY_KEY, JSON.stringify(existing.slice(0, MAX_DEMO_HISTORY_ITEMS)));
+    notifyHistoryUpdated();
     return;
   }
 
@@ -40,6 +50,8 @@ export async function saveRun(run: Omit<WorkflowRunRecord, 'id' | 'createdAt'> &
       'Content-Type': 'application/json',
     },
   });
+
+  notifyHistoryUpdated();
 }
 
 export async function loadHistory(): Promise<WorkflowRunRecord[]> {

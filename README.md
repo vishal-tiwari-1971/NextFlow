@@ -9,6 +9,13 @@ A modern, real-time workflow builder for creating and executing visual node-base
 
 ## Features
 
+### 🔐 User Authentication & Storage
+- **Clerk Authentication**: Secure user sign-up/sign-in with email and OAuth (Google, GitHub, etc.)
+- **Multi-Tenancy**: User data isolation with automatic user ID tracking
+- **Persistent Storage**: Save and load workflows from Neon PostgreSQL
+- **Public Sample Workflow**: Demo accessible without authentication
+- **Run History**: Permanent execution history per user
+
 ### 🎨 Visual Node Editor
 - **6 Node Types**: Text, Image, LLM, Video Upload, Image Crop, Frame Extract
 - **Drag & Drop Canvas**: Intuitive React Flow-based interface with smooth animations
@@ -205,6 +212,8 @@ Fetch workflow run history.
 | **Zustand** | State management |
 | **TypeScript** | Type safety |
 | **Tailwind CSS** | Styling |
+| **Clerk** | User authentication and session management |
+| **Neon PostgreSQL** | Serverless PostgreSQL for persistent data storage |
 | **Trigger.dev** | Distributed task orchestration |
 | **Google Generative AI** | LLM integration (Gemini) |
 | **Transloadit** | Media processing & uploads |
@@ -215,19 +224,27 @@ Fetch workflow run history.
 ### Environment Variables
 
 ```env
-# LLM
+# Authentication (Clerk)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+
+# Database (Neon PostgreSQL)
+DATABASE_URL=postgresql://user:pass@ep-*.neon.tech/db?sslmode=require
+
+# LLM (Google Generative AI)
 GEMINI_API_KEY=your_google_api_key
 
-# Media Upload
+# Media Upload (Transloadit)
 TRANSLOADIT_KEY=your_transloadit_key
 TRANSLOADIT_SECRET=your_transloadit_secret
 
-# Distributed Execution (optional)
+# Distributed Execution (Trigger.dev)
 TRIGGER_API_KEY=your_trigger_dev_key
-
-# Production URLs (optional)
-NEXTAUTH_URL=https://yourdomain.com
 ```
+
+**📚 For Complete Environment Setup**: See [ENV_VARIABLES.md](ENV_VARIABLES.md) for detailed instructions on getting all required API keys.
+
+**📚 For Clerk & Database Setup**: See [SETUP_GUIDE.md](SETUP_GUIDE.md) for step-by-step configuration.
 
 ### FFmpeg on Serverless
 
@@ -241,7 +258,7 @@ NEXTAUTH_URL=https://yourdomain.com
 
 ### Adding a New Node Type
 
-1. **Create component** in `components/nodes/YourNode.tsx`:
+1. **Create component** in `components/nodes/YourNodeName.tsx`:
 ```tsx
 'use client';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
@@ -267,13 +284,6 @@ const nodeTypes: NodeTypes = {
 
 4. **Implement in execution logic** (`lib/workflow-execution.ts` or `trigger/execute-node.ts`).
 
-### Running Tests
-
-```bash
-npm run lint          # Run ESLint
-npm run type-check    # Run TypeScript checks (via next build)
-npm run pre-deploy    # Full pre-deployment validation
-```
 
 ### Debugging
 
@@ -294,21 +304,7 @@ Enable verbose logging in node execution by checking browser console and server 
 - ✅ All env vars set in Vercel dashboard
 - ✅ Test extract-frame fallback works (uses Transloadit if FFmpeg unavailable)
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment guide, troubleshooting, and alternative hosting options.
 
-### Docker (Self-Hosted with FFmpeg)
-
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY .next ./
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-Include `ffmpeg` and `ffprobe` binaries in the container for local extraction.
 
 ## Performance Tips
 
@@ -328,7 +324,7 @@ Include `ffmpeg` and `ffprobe` binaries in the container for local extraction.
 
 ### "Transloadit assembly failed"
 - Check that `TRANSLOADIT_KEY` and `TRANSLOADIT_SECRET` are correct
-- Verify Transloadit plan supports `/http/import` and `/video/thumbnail` robots
+- Verify Transloadit plan supports `/http/import` and `/video/thumb` robots
 
 ### Workflow doesn't execute
 - Check browser console for JavaScript errors
@@ -337,14 +333,22 @@ Include `ffmpeg` and `ffprobe` binaries in the container for local extraction.
 
 ## Roadmap
 
-### Coming Soon (Next Sprint)
-- 🔐 **Clerk Authentication**: User authentication with email/OAuth (Google, GitHub)
-- 🗄️ **PostgreSQL Database**: Persistent workflow storage, user management, execution logs
-- 💾 **Cloud Workflow Storage**: Save, load, and version workflows per user
+### ✅ Implemented (Latest Update)
+- 🔐 **Clerk Authentication**: User authentication with email/OAuth (Google, GitHub, etc.)
+- 🗄️ **PostgreSQL Database (Neon)**: Persistent workflow storage, user management, execution logs
+- 💾 **Cloud Workflow Storage**: Save, load, and manage workflows per user
+- 🔒 **Multi-Tenancy**: User data isolation with Clerk user IDs
+
+
+
+### Coming Soon (Future Sprints)
 - 🔗 **Workflow Sharing**: Share workflows with team members and manage permissions
 - 📈 **Advanced Analytics**: Execution metrics, performance insights, audit logs
+- 🔄 **Workflow Versioning**: Version control for workflows with rollback capability
+- 📦 **Workflow Templates**: Pre-built templates and marketplace
+- ⚙️ **Advanced Scheduling**: Cron-based workflow triggers and scheduled execution
 
-These features will enable multi-user collaboration, persistent state, and enterprise-ready workflow management.
+These features will enable advanced collaboration, analytics, and workflow automation.
 
 ## Contributing
 
@@ -367,6 +371,5 @@ For issues, questions, or feature requests, please open an issue on GitHub or co
 ---
 
 **Version**: 1.0.0  
-**Last Updated**: April 28, 2026  
 **Next.js**: 14.2.25  
 **React**: 18.3.1

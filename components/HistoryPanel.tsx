@@ -1,6 +1,8 @@
 'use client';
 
+import { useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { loadHistory } from '../lib/run-history';
 import { useWorkflowStore, type WorkflowNodeData } from '../store/useWorkflowStore';
 
 type WorkflowRunNode = {
@@ -33,8 +35,6 @@ type LegacyRun = {
   };
 };
 
-const HISTORY_STORAGE_KEY = 'workflowHistory';
-
 const formatTimeAgo = (timestamp: number) => {
   const diffMs = Date.now() - timestamp;
   const minute = 60 * 1000;
@@ -56,6 +56,21 @@ const formatTimeAgo = (timestamp: number) => {
   return `${Math.floor(diffMs / day)} days ago`;
 };
 
+const formatIndiaTime = (timestamp: number) => {
+  const formatted = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(timestamp));
+  
+  console.log('formatIndiaTime:', { timestamp, formatted });
+  return formatted;
+};
+
 const shortenRunId = (runId: string) => {
   if (runId.length <= 12) {
     return runId;
@@ -64,107 +79,156 @@ const shortenRunId = (runId: string) => {
   return `${runId.slice(0, 6)}...${runId.slice(-4)}`;
 };
 
-const isWorkflowRun = (value: unknown): value is WorkflowRun => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<WorkflowRun>;
-
-  return (
-    typeof candidate.runId === 'string'
-    && typeof candidate.timestamp === 'number'
-    && Array.isArray(candidate.nodes)
-  );
-};
-
-const normalizeLegacyRun = (legacy: LegacyRun): WorkflowRun | null => {
-  if (!legacy.id || !legacy.createdAt) {
+const toWorkflowRun = (record: {
+  id?: string;
+  createdAt?: string;
+  result?: {
+    nodes?: Array<{
+      id?: string;
+      type?: string;
+      data?: {
+        inputs?: unknown;
+        outputs?: unknown;
+        status?: string;
+      };
+    }>;
+  };
+}): WorkflowRun | null => {
+  if (!record.id || !record.createdAt) {
     return null;
   }
 
-  const timestamp = Date.parse(legacy.createdAt);
+  const parsedCreatedAt = new Date(record.createdAt);
+  const timestamp = parsedCreatedAt.getTime();
+
+  console.log('Timestamp conversion debug:', {
+    createdAtString: record.createdAt,
+    parsedDate: parsedCreatedAt.toISOString(),
+    timestampMs: timestamp,
+    formattedIST: new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(parsedCreatedAt),
+  });
 
   if (Number.isNaN(timestamp)) {
     return null;
   }
 
-  const nodes: WorkflowRunNode[] = ((legacy.result?.nodes ?? []) as Array<{
+  const nodes: WorkflowRunNode[] = ((record.result?.nodes ?? []) as Array<{
     id?: string;
     type?: string;
     data?: { inputs?: unknown; outputs?: unknown; status?: string };
-  }>).map((node) => {
-    const status = node.data?.status === 'error' ? 'error' : 'success';
-
-    return {
-      nodeId: node.id || 'unknown-node',
-      type: node.type || 'unknown',
-      inputs: node.data?.inputs ?? {},
-      outputs: node.data?.outputs ?? {},
-      status: status as 'success' | 'error',
-    } as WorkflowRunNode;
-  });
+  }>).map((node) => ({
+    nodeId: node.id || 'unknown-node',
+    type: node.type || 'unknown',
+    inputs: node.data?.inputs ?? {},
+    outputs: node.data?.outputs ?? {},
+    status: node.data?.status === 'error' ? 'error' : 'success',
+  }));
 
   return {
-    runId: legacy.id,
+    runId: record.id,
     timestamp,
     nodes,
   };
 };
 
-const parseHistory = (raw: string): WorkflowRun[] => {
-  try {
-    const parsed = JSON.parse(raw) as unknown;
+const HISTORY_UPDATED_EVENT = 'nextflow:history-updated';
 
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    const normalized: WorkflowRun[] = [];
-
-    for (const item of parsed) {
-      if (isWorkflowRun(item)) {
-        normalized.push(item);
-        continue;
-      }
-
-      if (item && typeof item === 'object') {
-        const legacyRun = normalizeLegacyRun(item as LegacyRun);
-
-        if (legacyRun) {
-          normalized.push(legacyRun);
-        }
-      }
-    }
-
-    return normalized.sort((a, b) => b.timestamp - a.timestamp);
-  } catch {
-    return [];
-  }
-};
 
 export default function HistoryPanel() {
   const [history, setHistory] = useState<WorkflowRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<WorkflowRun | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isClient, setIsClient] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const { isLoaded, userId } = useAuth();
   const nodes = useWorkflowStore((state) => state.nodes);
   const edges = useWorkflowStore((state) => state.edges);
   const setWorkflow = useWorkflowStore((state) => state.setWorkflow);
 
   useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isClient) {
+    if (!isLoaded) {
       return;
     }
 
-    const historyRecords = parseHistory(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]');
-    setHistory(historyRecords);
-    setSelectedRun((current) => current ?? historyRecords[0] ?? null);
-  }, [isClient]);
+    let cancelled = false;
+
+    const load = async () => {
+      setIsLoading(true);
+
+      try {
+        const records = userId
+          ? await fetch('/api/runs').then(async (response) => {
+              if (!response.ok) {
+                return [] as LegacyRun[];
+              }
+
+              return (await response.json()) as LegacyRun[];
+            })
+          : await loadHistory();
+
+        const normalized = records
+          .map((record) => toWorkflowRun(record as LegacyRun))
+          .filter((record): record is WorkflowRun => record !== null)
+          .sort((a, b) => b.timestamp - a.timestamp);
+
+        if (!cancelled) {
+          setHistory(normalized);
+          setSelectedRun((current) => current ?? normalized[0] ?? null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, userId]);
+
+  useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    const handleHistoryUpdated = () => {
+      void (async () => {
+        const records = userId
+          ? await fetch('/api/runs').then(async (response) => {
+              if (!response.ok) {
+                return [] as LegacyRun[];
+              }
+
+              return (await response.json()) as LegacyRun[];
+            })
+          : await loadHistory();
+
+        const normalized = records
+          .map((record) => toWorkflowRun(record as LegacyRun))
+          .filter((record): record is WorkflowRun => record !== null)
+          .sort((a, b) => b.timestamp - a.timestamp);
+
+        setHistory(normalized);
+        setSelectedRun(normalized[0] ?? null);
+      })();
+    };
+
+    window.addEventListener(HISTORY_UPDATED_EVENT, handleHistoryUpdated);
+
+    return () => {
+      window.removeEventListener(HISTORY_UPDATED_EVENT, handleHistoryUpdated);
+    };
+  }, [isLoaded, userId]);
 
   const highlightNodes = useCallback(
     (runNodes: WorkflowRunNode[]) => {
@@ -232,9 +296,15 @@ export default function HistoryPanel() {
           <p className="mb-2 text-xs uppercase tracking-[0.22em] text-gray-400">Runs</p>
 
           <div className="space-y-2">
-            {history.length === 0 && (
+            {isLoading && (
               <div className="rounded-lg border border-gray-700 px-3 py-2 text-xs text-gray-400">
-                No runs yet in local history.
+                Loading history...
+              </div>
+            )}
+
+            {!isLoading && history.length === 0 && (
+              <div className="rounded-lg border border-gray-700 px-3 py-2 text-xs text-gray-400">
+                No runs yet.
               </div>
             )}
 
@@ -250,7 +320,10 @@ export default function HistoryPanel() {
                 }`}
               >
                 <div className="text-sm font-medium text-white">{shortenRunId(run.runId)}</div>
-                <div className="text-xs text-gray-400">{formatTimeAgo(run.timestamp)}</div>
+                <div className="text-xs text-gray-400">
+                  {formatIndiaTime(run.timestamp)} IST
+                </div>
+                <div className="text-[11px] text-gray-500">{formatTimeAgo(run.timestamp)}</div>
               </button>
             ))}
           </div>
