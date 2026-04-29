@@ -363,10 +363,13 @@ const extractFrameViaTransloadit = async (
 const downloadVideoToFile = async (videoUrl: string, outputPath: string) => {
   const response = await fetch(videoUrl, {
     cache: 'no-store',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to download video (${response.status}) from ${videoUrl}.`);
+    throw new Error(`Failed to download video (${response.status}) from ${videoUrl}. This may be due to CORS restrictions or expired URL.`);
   }
 
   const arrayBuffer = await response.arrayBuffer();

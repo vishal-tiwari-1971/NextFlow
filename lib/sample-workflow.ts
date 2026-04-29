@@ -29,7 +29,7 @@ const createImageData = (): ImageNodeData => ({
   title: 'Image Source',
   description: 'Upload a product image for visual analysis.',
   imageUrl:
-    'https://tmp-ap-southeast-1.transloadit.net/ab5b5248db5141558d6b58377d6b6f52/cc2a8f11d6f0486fbcae9130a770b826/74081c29126a425f9f9f868fd451335a.jpg',
+    'https://res.cloudinary.com/dcwnsh0y6/image/upload/v1777494585/headphone_ksn8kb.jpg',
   altText: 'Preset sample product image',
 });
 
@@ -48,7 +48,7 @@ const createVideoData = (): UploadVideoNodeData => ({
   title: 'Video Source',
   description: 'Upload a demo video to extract key frame context.',
   videoUrl:
-    'https://tmp-ap-southeast-1.transloadit.net/ab5b5248db5141558d6b58377d6b6f52/db7ee502e84244e8913e48619e84964a/b3a953c2da09409baa457f7bec8ca5ff.mp4',
+    'https://res.cloudinary.com/dcwnsh0y6/video/upload/v1777494604/Headphones_cex5jv.mp4',
 });
 
 const createExtractFrameData = (): ExtractFrameNodeData => ({
