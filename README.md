@@ -9,6 +9,13 @@ A modern, real-time workflow builder for creating and executing visual node-base
 
 ## Features
 
+### 🔐 User Authentication & Storage
+- **Clerk Authentication**: Secure user sign-up/sign-in with email and OAuth (Google, GitHub, etc.)
+- **Multi-Tenancy**: User data isolation with automatic user ID tracking
+- **Persistent Storage**: Save and load workflows from Neon PostgreSQL
+- **Public Sample Workflow**: Demo accessible without authentication
+- **Run History**: Permanent execution history per user
+
 ### 🎨 Visual Node Editor
 - **6 Node Types**: Text, Image, LLM, Video Upload, Image Crop, Frame Extract
 - **Drag & Drop Canvas**: Intuitive React Flow-based interface with smooth animations
@@ -205,6 +212,8 @@ Fetch workflow run history.
 | **Zustand** | State management |
 | **TypeScript** | Type safety |
 | **Tailwind CSS** | Styling |
+| **Clerk** | User authentication and session management |
+| **Neon PostgreSQL** | Serverless PostgreSQL for persistent data storage |
 | **Trigger.dev** | Distributed task orchestration |
 | **Google Generative AI** | LLM integration (Gemini) |
 | **Transloadit** | Media processing & uploads |
@@ -215,19 +224,27 @@ Fetch workflow run history.
 ### Environment Variables
 
 ```env
-# LLM
+# Authentication (Clerk)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+
+# Database (Neon PostgreSQL)
+DATABASE_URL=postgresql://user:pass@ep-*.neon.tech/db?sslmode=require
+
+# LLM (Google Generative AI)
 GEMINI_API_KEY=your_google_api_key
 
-# Media Upload
+# Media Upload (Transloadit)
 TRANSLOADIT_KEY=your_transloadit_key
 TRANSLOADIT_SECRET=your_transloadit_secret
 
-# Distributed Execution (optional)
+# Distributed Execution (Trigger.dev)
 TRIGGER_API_KEY=your_trigger_dev_key
-
-# Production URLs (optional)
-NEXTAUTH_URL=https://yourdomain.com
 ```
+
+**📚 For Complete Environment Setup**: See [ENV_VARIABLES.md](ENV_VARIABLES.md) for detailed instructions on getting all required API keys.
+
+**📚 For Clerk & Database Setup**: See [SETUP_GUIDE.md](SETUP_GUIDE.md) for step-by-step configuration.
 
 ### FFmpeg on Serverless
 
@@ -337,14 +354,26 @@ Include `ffmpeg` and `ffprobe` binaries in the container for local extraction.
 
 ## Roadmap
 
-### Coming Soon (Next Sprint)
-- 🔐 **Clerk Authentication**: User authentication with email/OAuth (Google, GitHub)
-- 🗄️ **PostgreSQL Database**: Persistent workflow storage, user management, execution logs
-- 💾 **Cloud Workflow Storage**: Save, load, and version workflows per user
+### ✅ Implemented (Latest Update)
+- 🔐 **Clerk Authentication**: User authentication with email/OAuth (Google, GitHub, etc.)
+- 🗄️ **PostgreSQL Database (Neon)**: Persistent workflow storage, user management, execution logs
+- 💾 **Cloud Workflow Storage**: Save, load, and manage workflows per user
+- 🔒 **Multi-Tenancy**: User data isolation with Clerk user IDs
+
+**See Also**:
+- [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - What's been implemented and what's next
+- [SETUP_GUIDE.md](SETUP_GUIDE.md) - Complete Clerk & Neon setup instructions
+- [CLERK_UI_GUIDE.md](CLERK_UI_GUIDE.md) - Integrating Clerk UI components
+- [ENV_VARIABLES.md](ENV_VARIABLES.md) - All required API keys and how to get them
+
+### Coming Soon (Future Sprints)
 - 🔗 **Workflow Sharing**: Share workflows with team members and manage permissions
 - 📈 **Advanced Analytics**: Execution metrics, performance insights, audit logs
+- 🔄 **Workflow Versioning**: Version control for workflows with rollback capability
+- 📦 **Workflow Templates**: Pre-built templates and marketplace
+- ⚙️ **Advanced Scheduling**: Cron-based workflow triggers and scheduled execution
 
-These features will enable multi-user collaboration, persistent state, and enterprise-ready workflow management.
+These features will enable advanced collaboration, analytics, and workflow automation.
 
 ## Contributing
 

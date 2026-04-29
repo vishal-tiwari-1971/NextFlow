@@ -115,6 +115,7 @@ interface WorkflowStore {
   edges: Edge[];
   isRunning: boolean;
   runError: string | null;
+  userId: string | null;
   setWorkflow: (workflow: WorkflowGraph) => void;
   addNode: (type: WorkflowNodeType, position: XYPosition) => void;
   deleteNode: (nodeId: string) => void;
@@ -127,6 +128,7 @@ interface WorkflowStore {
   getNodeInputData: (nodeId: string) => Record<string, unknown>;
   updateNodeOutputs: (nodeId: string, outputs: Record<string, unknown>) => void;
   setWorkflowRunState: (state: { isRunning: boolean; runError?: string | null }) => void;
+  setUserId: (userId: string | null) => void;
   runNode: (nodeId: string) => Promise<void>;
   runWorkflow: () => Promise<void>;
 }
@@ -285,6 +287,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   edges: [],
   isRunning: false,
   runError: null,
+  userId: null,
   setWorkflow: ({ nodes, edges }) => {
     set({
       nodes,
@@ -292,6 +295,9 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       isRunning: false,
       runError: null,
     });
+  },
+  setUserId: (userId) => {
+    set({ userId });
   },
   addNode: (type, position) => {
     const nodeId = createNodeId(type);

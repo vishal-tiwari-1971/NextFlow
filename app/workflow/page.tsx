@@ -10,7 +10,8 @@ import {
   type NodeTypes,
   type XYPosition,
 } from '@xyflow/react';
-import { useState } from 'react';
+import { UserButton, useAuth } from '@clerk/nextjs';
+import { useEffect, useState } from 'react';
 import HistoryPanel from '../../components/HistoryPanel';
 import LoadSampleWorkflowButton from '../../components/LoadSampleWorkflowButton';
 import NewWorkflowButton from '../../components/NewWorkflowButton';
@@ -20,6 +21,7 @@ import CropImageNode from '../../components/nodes/CropImageNode';
 import ExtractFrameNode from '../../components/nodes/ExtractFrameNode';
 import TextNode from '../../components/nodes/TextNode';
 import UploadVideoNode from '../../components/nodes/UploadVideoNode';
+import { useAppStore } from '../../store/useAppStore';
 import { type WorkflowNodeType, useWorkflowStore } from '../../store/useWorkflowStore';
 
 type NodeContextMenuState = {
@@ -87,6 +89,7 @@ const randomPosition = (): XYPosition => {
 };
 
 function WorkflowCanvas() {
+  const { isLoaded, userId } = useAuth();
   const nodes = useWorkflowStore((state) => state.nodes);
   const edges = useWorkflowStore((state) => state.edges);
   const addNode = useWorkflowStore((state) => state.addNode);
@@ -98,8 +101,19 @@ function WorkflowCanvas() {
   const runWorkflow = useWorkflowStore((state) => state.runWorkflow);
   const isRunning = useWorkflowStore((state) => state.isRunning);
   const runError = useWorkflowStore((state) => state.runError);
+  const setMode = useAppStore((state) => state.setMode);
+  const setUserId = useWorkflowStore((state) => state.setUserId);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [contextMenu, setContextMenu] = useState<NodeContextMenuState>(null);
+
+  useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    setMode(userId ? 'user' : 'demo');
+    setUserId(userId ?? null);
+  }, [isLoaded, setMode, setUserId, userId]);
 
   const handleAddNode = (type: WorkflowNodeType) => {
     addNode(type, randomPosition());
@@ -137,7 +151,18 @@ function WorkflowCanvas() {
           )}
         </div>
 
+          {!isSidebarCollapsed && (
+            <div className="mb-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Account</p>
+                <p className="mt-1 text-sm text-slate-200">{userId ? 'Signed in' : 'Demo mode'}</p>
+              </div>
+              {isLoaded && userId ? <UserButton /> : <span className="text-xs text-slate-400">Public sample</span>}
+            </div>
+          )}
+
         <div className={isSidebarCollapsed ? 'space-y-2' : 'space-y-3'}>
+            <NewWorkflowButton isCollapsed={isSidebarCollapsed} />
           {nodeButtons.map((button) => (
             <button
               key={button.type}
@@ -165,7 +190,6 @@ function WorkflowCanvas() {
         </div>
 
         <LoadSampleWorkflowButton isCollapsed={isSidebarCollapsed} />
-        <NewWorkflowButton isCollapsed={isSidebarCollapsed} />
 
         <button
           type="button"
